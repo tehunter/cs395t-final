@@ -8,7 +8,7 @@ namespace FluidSimulation
 	class EulerSimulation
 	{
 	public:
-		int step(double h);
+		void step(double h);
 	private:
 		// TODO: Calculate timestep from formula
 		double getTimeStep() { return 0.001; };

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <Eigen/Sparse>
+#include <Eigen/Dense>
+#include <Eigen/SparseCore>
 
 namespace FluidSimulation
 {
@@ -14,17 +15,18 @@ namespace FluidSimulation
 		void getWaterSurface(Eigen::MatrixXd& surface);
 		void getGridStates(Eigen::MatrixXi& grid);
 
-		Eigen::SparseMatrix<double>& getVelocityGrid();
-		Eigen::SparseMatrix<double>& getPressureGrid();
-		Eigen::SparseMatrix<double>& getForcesGrid();
+		void getVelocityGrid(Eigen::SparseMatrix<double>& v);
+		void getPressureGrid(Eigen::SparseMatrix<double>& p);
+		void getForcesGrid(Eigen::SparseMatrix<double>& f);
 
-		Eigen::SparseMatrix<double>& getPressureGradient();
-		Eigen::SparseMatrix<double>& getVelocityGradient();
+		void getPressureGradient(Eigen::SparseMatrix<double>& dp);
+		void EulerState::getVelocityGradient(Eigen::SparseMatrix<double, Eigen::ColMajor>& dv);
 
 		Eigen::Vector3i getDimensions() { return m_dims; };
 		int getGridMatrixSize() { return m_dims.prod(); };
 
-		void getCentralDifferenceStencil(Dimension dim, Eigen::SparseMatrix<int>& stencil)
+		void getCentralDifferenceStencil(Dimension dim, Eigen::SparseMatrix<int>& stencil);
+
 	private:
 		Eigen::Vector3d getVelocityAtPoint(const Eigen::Vector3d point);
 		Eigen::Vector3d getPressureAtPoint(const Eigen::Vector3d point);

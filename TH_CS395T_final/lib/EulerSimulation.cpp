@@ -1,6 +1,6 @@
 #include <vector>
 
-#include <Eigen/Base>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 #include "EulerSimulation.h"
 #include "EulerState.h"
@@ -12,8 +12,8 @@ namespace FluidSimulation
 		Eigen::SparseMatrix<double> v, p, f, dv;
 		std::vector<Eigen::Triplet<double>> velocityTriplets, pressureTriplets;
 
-		f = m_currentState.getForcesGrid();
-		v = m_currentState.getVelocityGrid();
+		m_currentState.getForcesGrid(f);
+		m_currentState.getVelocityGrid(v);
 
 		/* SOLVE VELOCITY */
 		velocityTriplets.reserve(v.nonZeros());
@@ -22,7 +22,7 @@ namespace FluidSimulation
 
 		v + h * p;
 
-		forces = p / m_density - m_gravity * ;
+		//forces = p / m_density - m_gravity * ;
 		
 	}
 }
