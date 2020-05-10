@@ -5,6 +5,10 @@ cmake_minimum_required (VERSION 3.8)
 
 project ("TH_CS395T_final")
 
+if (MSVC)
+	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+endif()
+
 include(ExternalProject)
 
 ### LOAD PACKAGES
@@ -13,6 +17,14 @@ find_package(Threads REQUIRED)
 
 # Eigen 3
 find_package(Eigen3 REQUIRED NO_MODULE)
+
+
+if(NOT TARGET spdlog)
+    # Stand-alone build
+    find_package(spdlog CONFIG)
+endif()
+
+
 
 # TESTING - Added
 option(PACKAGE_TESTS "Build the tests" OFF)
@@ -34,8 +46,8 @@ endif()
 # Include sub-projects.
 add_subdirectory ("TH_CS395T_final")
 
+include(GoogleTest)
 if(PACKAGE_TESTS)
     enable_testing()
-    include(GoogleTest)
     add_subdirectory(tests)
 endif()

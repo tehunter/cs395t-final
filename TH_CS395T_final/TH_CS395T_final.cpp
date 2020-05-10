@@ -9,7 +9,7 @@ using namespace std;
 int main()
 {
 	Eigen::Vector3d a;
-	a << 0, 1, 2;
+	a << 0.0, 1.0, 2.0;
 
 	cout << a;
 
