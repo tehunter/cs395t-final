@@ -19,6 +19,8 @@ namespace FluidSimulation
 		calculateCentralDifferenceStencil(Y, true, m_stencilYMid);
 		calculateCentralDifferenceStencil(Z, true, m_stencilZMid);
 
+		calculateLaplacian(m_laplacian);
+
 		m_positionsMid.resize(getGridMatrixSize(true), 3);
 		for (int x = 0; x < m_dims(X) + 1; x++)
 		{
@@ -122,16 +124,16 @@ namespace FluidSimulation
 						triplets.emplace_back(i, i + spacing, 1.0);
 					}
 					// Within bounds
-					else if (i - spacing >= 0 && i + spacing < getGridMatrixSize(false))
+					else if (i - spacing >= 0 && i < getGridMatrixSize(false))
 					{
 
-						triplets.emplace_back(i, i - spacing, -1.0);
-						triplets.emplace_back(i, i + spacing, 1.0);
+						triplets.emplace_back(i, i - spacing, 1.0);
+						triplets.emplace_back(i, i, -1.0);
 					}
 					// Along an edge - no gradient (e.g. assume pressure is equalized on both sides of the grid cell)
 					else if (i - spacing < 0)
 					{
-						//triplets.emplace_back(i, i + spacing, 2.0);
+						//triplets.emplace_back(i, i, 
 					} 
 					else if (i + spacing >= getGridMatrixSize(false))
 					{
@@ -141,6 +143,42 @@ namespace FluidSimulation
 			}
 		}
 
+		stencil.setFromTriplets(triplets.begin(), triplets.end());
+	}
+
+	void EulerState::calculateLaplacian(Eigen::SparseMatrix<double>& stencil)
+	{
+		std::vector<Eigen::Triplet<double>> triplets;
+		int spacing[3];
+		spacing[0] = m_dims(Z) * m_dims(Y);
+		spacing[1] = m_dims(Z);
+		spacing[2] = 1;
+
+		// Loop through all of the grid cells
+		for (int x = 0; x < m_dims(X); x++)
+		{
+			for (int y = 0; y < m_dims(Y); y++)
+			{
+				for (int z = 0; z < m_dims(Z); z++)
+				{
+					int i = z + y * m_dims(Z) + x * m_dims(Z) * m_dims(Y);
+
+					// For each grid cell, insert the central difference on each side for each dimension
+					for (int dim = 0; dim < 3; dim++)
+					{
+						for (int dir = -1; dir <= 1; dir += 2)
+						{
+							// Only add this central difference if it is defined
+							if (i + dir * spacing[dim] >= 0 && i + dir * spacing[dim] < getGridMatrixSize(false))
+							{
+								triplets.emplace_back(i, i, 1 / m_gridSizeHorizontal(dim));
+								triplets.emplace_back(i, i + dir * spacing[dim], 1 / m_gridSizeHorizontal(dim));
+							}
+						}
+					}
+				}
+			}
+		}
 		stencil.setFromTriplets(triplets.begin(), triplets.end());
 	}
 
@@ -180,7 +218,7 @@ namespace FluidSimulation
 
 	void EulerState::getQuantityGradient(Eigen::SparseMatrix<double, Eigen::ColMajor>& dv, bool midGrid, const Eigen::SparseMatrix<double>& quantity)
 	{
-		Eigen::SparseMatrix<double, Eigen::ColMajor> xStencil, yStencil, zStencil;
+		//Eigen::SparseMatrix<double, Eigen::ColMajor> xStencil, yStencil, zStencil;
 		//Eigen::SparseMatrix<double, Eigen::ColMajor> dv(3, getGridMatrixSize());
 
 		dv.resize(getGridMatrixSize(false), 3);
@@ -197,16 +235,42 @@ namespace FluidSimulation
 
 		if (!midGrid)
 		{
-			dv.col(0) = m_stencilX * quantity.col(0) / 2.0 / m_gridSizeHorizontal(0);
-			dv.col(1) = m_stencilY * quantity.col(1) / 2.0 / m_gridSizeHorizontal(1);
-			dv.col(2) = m_stencilZ * quantity.col(2) / 2.0 / m_gridSizeHorizontal(2);
+			dv.col(0) = m_stencilX * quantity / m_gridSizeHorizontal(0);
+			dv.col(1) = m_stencilY * quantity / m_gridSizeHorizontal(1);
+			dv.col(2) = m_stencilZ * quantity / m_gridSizeHorizontal(2);
 		}
 		else
 		{
-			dv.col(0) = m_stencilXMid * quantity.col(0) / 2.0 / m_gridSizeHorizontal(0);
-			dv.col(1) = m_stencilYMid * quantity.col(1) / 2.0 / m_gridSizeHorizontal(1);
-			dv.col(2) = m_stencilZMid * quantity.col(2) / 2.0 / m_gridSizeHorizontal(2);
+			dv.col(0) = m_stencilXMid * quantity.col(0) / m_gridSizeHorizontal(0);
+			dv.col(1) = m_stencilYMid * quantity.col(1) / m_gridSizeHorizontal(1);
+			dv.col(2) = m_stencilZMid * quantity.col(2) / m_gridSizeHorizontal(2);
 		}
+	}
+
+	void EulerState::getPressureGradient(Eigen::SparseMatrix<double>& dp)
+	{
+		getQuantityGradient(dp, false, m_pressure);
+	}
+
+	void EulerState::getQuantityDivergence(Eigen::SparseMatrix<double>& dv, const Eigen::SparseMatrix<double> quantity)
+	{
+		Eigen::SparseMatrix<double> dvDir;
+
+		dv.resize(getGridMatrixSize(false), getGridMatrixSize(false));
+
+		getQuantityGradient(dvDir, true, quantity);
+
+		Eigen::SparseVector<double, Eigen::ColMajor> ones(3, 1);
+		ones.insert(0, 0) = 1;
+		ones.insert(1, 0) = 1;
+		ones.insert(2, 0) = 1;
+
+		dv = dvDir * ones;
+	}
+
+	void EulerState::getLaplacianOperator(Eigen::SparseMatrix<double>& d2v)
+	{
+		d2v = m_laplacian;
 	}
 
 	Eigen::Vector3d EulerState::getLocalCoordinatesOfElement(size_t gridIndex, bool midGrid)

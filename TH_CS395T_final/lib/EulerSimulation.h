@@ -18,10 +18,14 @@ namespace FluidSimulation
 			m_density(1.0), m_gravity(-9.8), m_currentState(dimSize, gridWidth) { };
 		void step(double h);
 	private:
-		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField,
-			Eigen::SparseMatrix<double>& interpolateX, Eigen::SparseMatrix<double>& interpolateY, Eigen::SparseMatrix<double>& interpolateZ,
-			Eigen::SparseMatrix<double, Eigen::ColMajor>& oldVelocityMid);
+		void getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField, Eigen::SparseMatrix<double, Eigen::ColMajor>& velocityMid);
+		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField);
 		void advectSignedDistance(double h, const Eigen::SparseMatrix<double, Eigen::ColMajor> oldVelocityMid);
+		void updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::MatrixXd& signedDistance);
+
+		void updatePressure(double h, const Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure);
+		void updateVelocityFromPressureGradient(double h, Eigen::SparseMatrix<double> velocity);
+
 
 		// TODO: Calculate timestep from formula
 		double getTimeStep() { return 0.001; };
@@ -38,6 +42,7 @@ namespace FluidSimulation
 		double m_density;
 		double m_gravity;
 		bool m_enablePressure;
+		bool m_enableGravity;
 
 		friend class EulerSimulationLevelSetTest;
 		friend class EulerSimulationTest_TestConstantAdvection_Test;
