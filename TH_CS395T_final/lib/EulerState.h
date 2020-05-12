@@ -46,7 +46,7 @@ namespace FluidSimulation
 
 	private:
 		void calculateCentralDifferenceStencil(Dimension dim, bool midGrid, Eigen::SparseMatrix<double, Eigen::ColMajor>& stencil);
-		void calculateLaplacian(Eigen::SparseMatrix<double>& stencil)
+		void calculateLaplacian(Eigen::SparseMatrix<double>& stencil);
 
 
 		Eigen::Vector3d getVelocityAtPoint(const Eigen::Vector3d point);

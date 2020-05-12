@@ -2,7 +2,7 @@
 #include <cmath>
 #include <Eigen/Core>
 #include <Eigen/Sparse>
-#include <Eigen/ConjugateGradient>
+#include <Eigen/IterativeLinearSolvers>
 #include "EulerSimulation.h"
 #include "EulerState.h"
 #include "spdlog/spdlog.h"
@@ -270,7 +270,7 @@ namespace FluidSimulation
 		//oldVelocityMid.cwiseQuotient(m_currentState.m_gridSizeHorizontal) * h;
 	}
 
-	void EulerSimulation::updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::MatrixXd& signedDistance)
+	void EulerSimulation::updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::VectorXd& signedDistance)
 	{
 		Eigen::SparseMatrix<double>::InnerIterator it(velocity, Z);
 		std::vector<int> valuesToInsert;
@@ -286,11 +286,11 @@ namespace FluidSimulation
 					if (it && it.row() == i)
 					{
 						it.valueRef() += h * m_gravity;
-						it++;
+						++it;
 					} 
-					else if (signedDistance(i, i) <= 3 * m_currentState.m_gridSizeHorizontal.maxCoeff())
+					else if (signedDistance(i) <= 3 * m_currentState.m_gridSizeHorizontal.maxCoeff())
 					{
-						valuesToInsert.push_back(i);
+							valuesToInsert.push_back(i);
 					}
 				}
 			}

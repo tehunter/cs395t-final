@@ -15,13 +15,17 @@ namespace FluidSimulation
 	{
 	public:
 		EulerSimulation(Eigen::Vector3i dimSize, Eigen::Vector3d gridWidth) : 
-			m_density(1.0), m_gravity(-9.8), m_currentState(dimSize, gridWidth) { };
+			m_density(1.0), m_gravity(-9.8), m_currentState(dimSize, gridWidth) 
+		{
+			m_enableGravity = true;
+			m_enablePressure = true;
+		};
 		void step(double h);
 	private:
 		void getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField, Eigen::SparseMatrix<double, Eigen::ColMajor>& velocityMid);
 		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField);
 		void advectSignedDistance(double h, const Eigen::SparseMatrix<double, Eigen::ColMajor> oldVelocityMid);
-		void updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::MatrixXd& signedDistance);
+		void updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::VectorXd& signedDistance);
 
 		void updatePressure(double h, const Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure);
 		void updateVelocityFromPressureGradient(double h, Eigen::SparseMatrix<double> velocity);
@@ -48,6 +52,7 @@ namespace FluidSimulation
 		friend class EulerSimulationTest_TestConstantAdvection_Test;
 		friend class EulerSimulationLevelSetTest_SphereAdvection_Test;
 		friend class EulerSimulationLevelSetTest_ConstantVelocityAdvection_Test;
+		friend class EulerSimulationLevelSetTest_GravityEnabled_Test;
 	};
 
 }

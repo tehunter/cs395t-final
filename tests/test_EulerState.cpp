@@ -165,17 +165,17 @@ namespace FluidSimulation
     EXPECT_EQ(dv.cols(), 3);
     EXPECT_EQ(dv.rows(), 4);
 
-    EXPECT_DOUBLE_EQ(dv.coeff(0, 2), 1 / 2.0 /0.1);
-    EXPECT_DOUBLE_EQ(dv.coeff(1, 2), 1 / 2.0 / 0.1);
-    EXPECT_DOUBLE_EQ(dv.coeff(2, 2), -2 / 2.0 / 0.1);
+    EXPECT_DOUBLE_EQ(dv.coeff(0, 2), 1 /0.1);
+    EXPECT_DOUBLE_EQ(dv.coeff(1, 2), 1 / 0.1);
+    EXPECT_DOUBLE_EQ(dv.coeff(2, 2), -2 / 0.1);
     EXPECT_DOUBLE_EQ(dv.coeff(3, 2), 0);
 
-    EXPECT_DOUBLE_EQ(dv.coeff(0, 1), 2 / 2.0 / 0.1);
+    EXPECT_DOUBLE_EQ(dv.coeff(0, 1), 2 / 0.1);
     EXPECT_DOUBLE_EQ(dv.coeff(1, 1), 0);
     EXPECT_DOUBLE_EQ(dv.coeff(2, 1), 0);
     EXPECT_DOUBLE_EQ(dv.coeff(3, 1), 0);
 
-    EXPECT_DOUBLE_EQ(dv.coeff(0, 0), 3 / 2.0 / 0.1);
+    EXPECT_DOUBLE_EQ(dv.coeff(0, 0), 3 / 0.1);
     EXPECT_DOUBLE_EQ(dv.coeff(1, 0), 0);
     EXPECT_DOUBLE_EQ(dv.coeff(2, 0), 0);
     EXPECT_DOUBLE_EQ(dv.coeff(3, 0), 0);

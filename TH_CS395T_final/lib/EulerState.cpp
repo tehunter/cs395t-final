@@ -61,7 +61,7 @@ namespace FluidSimulation
 
 		/* SET SIZES */
 		m_velocity.resize(getGridMatrixSize(true), 3);
-		m_pressure.resize(getGridMatrixSize(false), 3);
+		m_pressure.resize(getGridMatrixSize(false), 1);
 		m_dSignedDistance.resize(getGridMatrixSize(true), 3);
 		m_signedDistance.resize(getGridMatrixSize(true), 1);
 		spdlog::info("Finished Constructing EulerState");
@@ -153,6 +153,8 @@ namespace FluidSimulation
 		spacing[0] = m_dims(Z) * m_dims(Y);
 		spacing[1] = m_dims(Z);
 		spacing[2] = 1;
+
+		stencil.resize(getGridMatrixSize(false), getGridMatrixSize(false));
 
 		// Loop through all of the grid cells
 		for (int x = 0; x < m_dims(X); x++)

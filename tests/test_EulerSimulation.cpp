@@ -55,8 +55,8 @@ namespace FluidSimulation
           }
         }
       }
-      simulation.m_currentState.m_velocity.insert(3 + 5 * 3 + 5 * 3 * 3, 2) = -1;
-      simulation.m_currentState.m_velocity.insert(2 + 5 * 3 + 5 * 3 * 3, 2) = -1;
+      //simulation.m_currentState.m_velocity.insert(3 + 5 * 3 + 5 * 3 * 3, 2) = -1;
+      //simulation.m_currentState.m_velocity.insert(2 + 5 * 3 + 5 * 3 * 3, 2) = -1;
 
       spdlog::info("Signed Distance = \n{}", simulation.m_currentState.m_signedDistance);
     }
@@ -71,8 +71,12 @@ namespace FluidSimulation
   TEST_F(EulerSimulationLevelSetTest, SphereAdvection)
   {
     simulation.m_enablePressure = false;
+    simulation.m_enableGravity = false;
     spdlog::set_level(spdlog::level::debug);
     spdlog::info("Running SphereAdvection");
+
+    simulation.m_currentState.m_velocity.insert(3 + 5 * 3 + 5 * 3 * 3, 2) = -1;
+    simulation.m_currentState.m_velocity.insert(2 + 5 * 3 + 5 * 3 * 3, 2) = -1;
 
     // 0.35
     EXPECT_DOUBLE_EQ(simulation.m_currentState.m_signedDistance(3 + 5 * 2 + 5 * 5 * 2), 0.05);
@@ -95,8 +99,12 @@ namespace FluidSimulation
   TEST_F(EulerSimulationLevelSetTest, ConstantVelocityAdvection)
   {
     simulation.m_enablePressure = false;
+    simulation.m_enableGravity = false;
     spdlog::set_level(spdlog::level::debug);
-    spdlog::info("Running up TestConstantAdvection");
+    spdlog::info("Running ConstantVelocityAdvection");
+
+    simulation.m_currentState.m_velocity.insert(3 + 5 * 3 + 5 * 3 * 3, 2) = -1;
+    simulation.m_currentState.m_velocity.insert(2 + 5 * 3 + 5 * 3 * 3, 2) = -1;
 
     EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(3 + 5 * 2 + 5 * 5 * 2, 2), -1);
     EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2 + 5 * 2 + 5 * 5 * 2, 2), -1);
@@ -104,6 +112,44 @@ namespace FluidSimulation
     spdlog::info("Stepped");
     EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2 + 5 * 2 + 5 * 5 * 2, 2), -1);
     EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(1 + 5 * 2 + 5 * 5 * 2, 2), -1);
+    //EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2, 0), -0.5);
+    //EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2, 0), -1.0);
+  }
+
+  TEST_F(EulerSimulationLevelSetTest, GravityEnabled)
+  {
+    simulation.m_enablePressure = false;
+    simulation.m_enableGravity = true;
+    spdlog::set_level(spdlog::level::debug);
+    spdlog::info("Running ConstantVelocityAdvection");
+
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(3 + 5 * 2 + 5 * 5 * 2, 2), 0);
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2 + 5 * 2 + 5 * 5 * 2, 2), 0);
+    simulation.step(0.05);
+    spdlog::info("Stepped");
+    ASSERT_LT(simulation.m_currentState.m_velocity.coeff(2 + 5 * 2 + 5 * 5 * 2, 2), 0);
+    ASSERT_LT(simulation.m_currentState.m_velocity.coeff(1 + 5 * 2 + 5 * 5 * 2, 2), 0);
+
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2 + 5 * 2 + 5 * 5 * 2, 2), -0.05 * 9.8);
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(1 + 5 * 2 + 5 * 5 * 2, 2), -0.05 * 9.8);
+
+    // 0.35
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_signedDistance(3 + 5 * 2 + 5 * 5 * 2), 0.05);
+    // 0.25
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_signedDistance(2 + 5 * 2 + 5 * 5 * 2), -0.05);
+    // 0.15
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_signedDistance(1 + 5 * 2 + 5 * 5 * 2), 0.05);
+    // 0.05
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_signedDistance(0 + 5 * 2 + 5 * 5 * 2), 0.15);
+
+    simulation.step(0.05);
+    ASSERT_LT(simulation.m_currentState.m_velocity.coeff(2 + 5 * 2 + 5 * 5 * 2, 2), 0);
+    ASSERT_LT(simulation.m_currentState.m_velocity.coeff(1 + 5 * 2 + 5 * 5 * 2, 2), 0);
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2 + 5 * 2 + 5 * 5 * 2, 2), -0.1 * 9.8);
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(1 + 5 * 2 + 5 * 5 * 2, 2), -0.1 * 9.8);
+
+
+
     //EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2, 0), -0.5);
     //EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2, 0), -1.0);
   }

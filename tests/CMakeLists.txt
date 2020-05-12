@@ -33,5 +33,5 @@ macro(package_add_test TESTNAME)
     add_test(MyTests ${TESTNAME})
 endmacro()
 
-package_add_test(EulerState test_EulerState.cpp)  
-package_add_test(EulerSimulation test_EulerSimulation.cpp)  
+package_add_test(TestEulerState test_EulerState.cpp)  
+package_add_test(TestEulerSimulation test_EulerSimulation.cpp)  
