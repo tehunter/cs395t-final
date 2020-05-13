@@ -27,22 +27,22 @@ namespace FluidSimulation
 
 
 
-		void getWaterSurface(Eigen::MatrixXd& surface);
-		void getGridStates(Eigen::MatrixXi& grid);
+		void getWaterSurface(Eigen::MatrixXd& surface) const;
+		void getGridStates(Eigen::MatrixXi& grid) const;
 
-		void getPressureGrid(Eigen::SparseMatrix<double>& p);
-		void getForcesGrid(Eigen::SparseMatrix<double>& f);
+		void getPressureGrid(Eigen::SparseMatrix<double>& p) const;
+		void getForcesGrid(Eigen::SparseMatrix<double>& f) const;
 
-		void getPressureGradient(Eigen::SparseMatrix<double>& dp);
-		void getQuantityGradient(Eigen::SparseMatrix<double, Eigen::ColMajor>& dv, bool midGrid, const Eigen::SparseMatrix<double>& quantity);
-		void getQuantityDivergence(Eigen::SparseMatrix<double>& dv, const Eigen::SparseMatrix<double> quantity);
-		void getLaplacianOperator(Eigen::SparseMatrix<double>& d2v);
+		void getPressureGradient(Eigen::SparseMatrix<double>& dp) const;
+		void getQuantityGradient(Eigen::SparseMatrix<double, Eigen::ColMajor>& dv, bool midGrid, const Eigen::SparseMatrix<double>& quantity) const;
+		void getQuantityDivergence(Eigen::SparseMatrix<double>& dv, const Eigen::SparseMatrix<double> quantity) const;
+		void getLaplacianOperator(Eigen::SparseMatrix<double>& d2v) const;
 
-		const Eigen::Vector3i getDimensions() { return m_dims; };
-		const size_t getGridMatrixSize(bool midGrid);
+		const Eigen::Vector3i getDimensions() const { return m_dims; };
+		const size_t getGridMatrixSize(bool midGrid) const;
 
-		void getCentralDifferenceStencil(Dimension dim, bool midGrid, Eigen::SparseMatrix<double, Eigen::ColMajor>& stencil);
-		Eigen::Vector3d getLocalCoordinatesOfElement(size_t gridIndex, bool midGrid);
+		void getCentralDifferenceStencil(Dimension dim, bool midGrid, Eigen::SparseMatrix<double, Eigen::ColMajor>& stencil) const;
+		Eigen::Vector3d getLocalCoordinatesOfElement(size_t gridIndex, bool midGrid) const;
 
 	private:
 		void calculateCentralDifferenceStencil(Dimension dim, bool midGrid, Eigen::SparseMatrix<double, Eigen::ColMajor>& stencil);
