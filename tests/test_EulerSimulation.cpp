@@ -211,11 +211,12 @@ namespace FluidSimulation
     //simulation.step(0.1);
     //simulation.step(0.1);
 
-    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(0), 0.45 * 9.8 * 1, 1e-1 * 0.45 * 9.8 * 1);
-    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(1), 0.35 * 9.8 * 1, 1e-1 * 0.35 * 9.8 * 1);
-    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(2), 0.25 * 9.8 * 1, 1e-1 * 0.25 * 9.8 * 1);
-    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(3), 0.15 * 9.8 * 1, 1e-1 * 0.15 * 9.8 * 1);
-    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(4), 0.05 * 9.8 * 1, 1e-1 * 0.05 * 9.8 * 1);
+    // Note that the pressure itself doesn't really matter, only the gradient!
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(0) - simulation.m_currentState.m_pressure.coeff(1), 0.1 * 9.8 * 1, 1e-1 * 0.45 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(1) - simulation.m_currentState.m_pressure.coeff(2), 0.1 * 9.8 * 1, 1e-1 * 0.35 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(2) - simulation.m_currentState.m_pressure.coeff(3), 0.1 * 9.8 * 1, 1e-1 * 0.25 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(3) - simulation.m_currentState.m_pressure.coeff(4), 0.1 * 9.8 * 1, 1e-1 * 0.15 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(4) - simulation.m_currentState.m_pressure.coeff(5), 0.1 * 9.8 * 1, 1e-1 * 0.05 * 9.8 * 1);
     EXPECT_DOUBLE_EQ(simulation.m_currentState.m_pressure.coeff(5), 0);
   }
 
