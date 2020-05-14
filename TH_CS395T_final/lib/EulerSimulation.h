@@ -22,6 +22,7 @@ namespace FluidSimulation
 		};
 		void step(double h);
 		EulerState const* getState() { return &m_currentState; };
+		EulerState* updateState() { return &m_currentState; };
 	private:
 		void getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField, Eigen::SparseMatrix<double, Eigen::ColMajor>& velocityMid);
 		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField);
