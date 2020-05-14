@@ -380,7 +380,7 @@ namespace FluidSimulation
 
 		m_currentState.getPressureGradient(dp);
 
-		velocity -= h / m_density * dp;
+		velocity -= h / m_density * m_currentState.m_midToElement.transpose() * dp;
 	}
 
 
