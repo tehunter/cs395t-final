@@ -4,9 +4,34 @@
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 #include <Eigen/Core>
+#include <thread>
+
+enum Dimension{X, Y, Z};
 
 namespace FluidVisualizer
 {
+	ParticleVisualizer::ParticleVisualizer(FluidSimulation::EulerSimulation* simulation) : 
+		m_simulation(simulation), sim_thread(NULL), please_pause(false), please_die(false), running(false)
+	{
+		/* FLOOR */
+		if (true)
+		{
+			double floory = 0.0;
+			renderQ.resize(5, 3);
+			// floor
+			renderQ.row(0) << 0, floory, 0;
+			renderQ.row(1) << 1e6, floory, 1e6;
+			renderQ.row(2) << -1e6, floory, 1e6;
+			renderQ.row(3) << -1e6, floory, -1e6;
+			renderQ.row(4) << 1e6, floory, -1e6;
+
+			renderF.resize(4, 3);
+			renderF.row(0) << 0, 2, 1;
+			renderF.row(1) << 0, 3, 2;
+			renderF.row(2) << 0, 4, 3;
+			renderF.row(3) << 0, 1, 4;
+		}
+	}
 	void ParticleVisualizer::toggleSimulation()
 	{
 		if (!m_simulation)
@@ -43,6 +68,40 @@ namespace FluidVisualizer
 		return ret;
 	}
 
+	void ParticleVisualizer::initSimulation()
+	{
+		Eigen::Vector3d sphereCenter;
+		sphereCenter = m_simulation->getState()->m_gridSizeHorizontal.cwiseProduct(m_simulation->getState()->m_dims.cast<double>()) / 2.0;
+		double radius = sphereCenter(0) / 3.0;
+		for (int x = 0; x < m_simulation->getState()->m_dims(1) + 1; x++)
+		{
+			for (int y = 0; y < m_simulation->getState()->m_dims(Y) + 1; y++)
+			{
+				for (int z = 0; z < m_simulation->getState()->m_dims(Z) + 1; z++)
+				{
+					int i = z + y * (m_simulation->getState()->m_dims(Z) + 1) + x * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1);
+					Eigen::Vector3d position(x + 0.5, y + 0.5, z + 0.5);
+					position = position.cwiseProduct(m_simulation->getState()->m_gridSizeHorizontal);
+					Eigen::Vector3d direction = (position - sphereCenter);
+					double distance = (direction).norm() - radius;
+
+					// Set component 0 to the distance
+					m_simulation->updateState()->m_signedDistance(i) = distance;
+					// Set components 1-3 to the direction
+					if (direction.norm() >= 0)
+					{
+						m_simulation->updateState()->m_dSignedDistance.row(i) = direction.transpose().normalized();
+					}
+					else
+					{
+						// If it's equidistant than pick a random direction
+						m_simulation->updateState()->m_dSignedDistance.row(i) = Eigen::Vector3d::Random().transpose();
+					}
+				}
+			}
+		}
+	}
+
 	void ParticleVisualizer::resetSimulation()
 	{
 		if (!m_simulation)
@@ -51,7 +110,7 @@ namespace FluidVisualizer
 		killSimThread();
 		please_die = running = false;
 		please_pause = true;
-		//initSimulation();
+		initSimulation();
 		updateRenderGeometry();
 		sim_thread = new std::thread(&ParticleVisualizer::runSimThread, this);
 	}
@@ -89,27 +148,6 @@ namespace FluidVisualizer
 		int idx = 0;
 		double eps = 1e-4;
 
-		/* FLOOR */
-		if (true)
-		{
-			for (int i = 0; i < 6; i++)
-			{
-				vertexColors.push_back(Eigen::Vector3d(0.3, 1.0, 0.3));
-			}
-
-			verts.push_back(Eigen::Vector3d(-1, -0.5, eps));
-			verts.push_back(Eigen::Vector3d(1, -0.5, eps));
-			verts.push_back(Eigen::Vector3d(-1, -1, eps));
-
-			faces.push_back(Eigen::Vector3i(idx, idx + 1, idx + 2));
-
-			verts.push_back(Eigen::Vector3d(-1, -1, eps));
-			verts.push_back(Eigen::Vector3d(1, -0.5, eps));
-			verts.push_back(Eigen::Vector3d(1, -1, eps));
-			faces.push_back(Eigen::Vector3i(idx + 3, idx + 4, idx + 5));
-			idx += 6;
-		}
-
 		int gridCells = m_simulation->getState()->getGridMatrixSize(false);
 
 
@@ -122,9 +160,11 @@ namespace FluidVisualizer
 
 
 				Eigen::Vector3d pos = m_simulation->getState()->getLocalCoordinatesOfElement(i, false);
-				pos += Eigen::Vector3d::Random() / m_simulation->getState()->m_gridSizeHorizontal.minCoeff();
-
-				points.push_back(Eigen::Vector3d(pos[0], pos[1], pos[2]));
+				if (m_simulation->getState()->m_signedDistance(i) <= 0)
+				{
+					pos += Eigen::Vector3d::Random() * m_simulation->getState()->m_gridSizeHorizontal.minCoeff();
+					points.push_back(Eigen::Vector3d(pos[0], pos[1], pos[2]));
+				}
 
 				const double PI = 3.1415926535898;
 				/*for (int j = 0; j <= numcirclewedges; j++)

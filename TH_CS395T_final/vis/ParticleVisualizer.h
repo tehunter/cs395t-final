@@ -15,7 +15,7 @@ namespace FluidVisualizer
 	class ParticleVisualizer
 	{
 	public:
-		ParticleVisualizer(FluidSimulation::EulerSimulation* simulation) : m_simulation(simulation) { };
+		ParticleVisualizer(FluidSimulation::EulerSimulation* simulation);
 		virtual ~ParticleVisualizer()
 		{
 			killSimThread();
@@ -26,6 +26,7 @@ namespace FluidVisualizer
 		bool mouseCallback(igl::opengl::glfw::Viewer& viewer, int button, int modifier);
 		bool keyCallback(igl::opengl::glfw::Viewer& viewer, unsigned int key, int modifiers);
 		bool drawCallback(igl::opengl::glfw::Viewer& viewer);
+		void initSimulation();
 		void resetSimulation();
 		void toggleSimulation();
 

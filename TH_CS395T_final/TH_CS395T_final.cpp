@@ -23,7 +23,7 @@ int main()
 {
 	igl::opengl::glfw::Viewer viewer;
 
-	Eigen::Vector3i dimSize(100, 100, 50);
+	Eigen::Vector3i dimSize(10, 10, 5);
 	Eigen::Vector3d gridWidth(0.1, 0.1, 0.1);
 
 	simulation = new FluidSimulation::EulerSimulation(dimSize, gridWidth);
