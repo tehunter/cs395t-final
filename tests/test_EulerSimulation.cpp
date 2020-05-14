@@ -153,4 +153,71 @@ namespace FluidSimulation
     //EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2, 0), -0.5);
     //EXPECT_DOUBLE_EQ(simulation.m_currentState.m_velocity.coeff(2, 0), -1.0);
   }
+
+
+
+  class EulerSimulationPressureTest : public ::testing::Test {
+  protected:
+    EulerSimulationPressureTest() : simulation(Eigen::Vector3i(1, 1, 10), Eigen::Vector3d(0.1, 0.1, 0.1))
+    {
+      for (int x = 0; x < simulation.m_currentState.m_dims(X) + 1; x++)
+      {
+        for (int y = 0; y < simulation.m_currentState.m_dims(Y) + 1; y++)
+        {
+          for (int z = 0; z < simulation.m_currentState.m_dims(Z) + 1; z++)
+          {
+            int i = z + y * (simulation.m_currentState.m_dims(Z) + 1) + x * (simulation.m_currentState.m_dims(Z) + 1) * (simulation.m_currentState.m_dims(Y) + 1);
+            Eigen::Vector3d position(x + 0.5, y + 0.5, z + 0.5);
+            position = position.cwiseProduct(simulation.m_currentState.m_gridSizeHorizontal);
+            Eigen::Vector3d direction(0, 0, 1);
+            double distance = position[2] - 0.5;
+            direction *= (distance > 0 ? 1 : -1);
+
+            // Set component 0 to the distance
+            simulation.m_currentState.m_signedDistance(i) = distance;
+            // Set components 1-3 to the direction
+            if (direction.norm() >= 0)
+            {
+              simulation.m_currentState.m_dSignedDistance.row(i) = direction.transpose().normalized();
+            }
+            else
+            {
+              // If it's equidistant than pick a random direction
+              simulation.m_currentState.m_dSignedDistance.row(i) = Eigen::Vector3d::Random().transpose();
+            }
+          }
+        }
+      }
+      //simulation.m_currentState.m_velocity.insert(3 + 5 * 3 + 5 * 3 * 3, 2) = -1;
+      //simulation.m_currentState.m_velocity.insert(2 + 5 * 3 + 5 * 3 * 3, 2) = -1;
+
+      //spdlog::info("Signed Distance = \n{}", simulation.m_currentState.m_signedDistance);
+    }
+
+    void SetUp() override {
+
+    }
+
+    EulerSimulation simulation;
+  };
+
+  TEST_F(EulerSimulationPressureTest, HydrostaticPressure)
+  {
+    simulation.m_enablePressure = true;
+    simulation.m_enableGravity = true;
+
+    spdlog::set_level(spdlog::level::debug);
+    simulation.step(0.1);
+    //simulation.step(0.1);
+    //simulation.step(0.1);
+
+    // Note that the pressure itself doesn't really matter, only the gradient!
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(0) - simulation.m_currentState.m_pressure.coeff(1), 0.1 * 9.8 * 1, 1e-1 * 0.45 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(1) - simulation.m_currentState.m_pressure.coeff(2), 0.1 * 9.8 * 1, 1e-1 * 0.35 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(2) - simulation.m_currentState.m_pressure.coeff(3), 0.1 * 9.8 * 1, 1e-1 * 0.25 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(3) - simulation.m_currentState.m_pressure.coeff(4), 0.1 * 9.8 * 1, 1e-1 * 0.15 * 9.8 * 1);
+    EXPECT_NEAR(simulation.m_currentState.m_pressure.coeff(4) - simulation.m_currentState.m_pressure.coeff(5), 0.1 * 9.8 * 1, 1e-1 * 0.05 * 9.8 * 1);
+    EXPECT_DOUBLE_EQ(simulation.m_currentState.m_pressure.coeff(5), 0);
+  }
+
 }

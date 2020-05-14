@@ -29,7 +29,7 @@ namespace FluidSimulation
 		void advectSignedDistance(double h, const Eigen::SparseMatrix<double, Eigen::ColMajor> oldVelocityMid);
 		void updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::VectorXd& signedDistance);
 
-		void updatePressure(double h, const Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure);
+		void updatePressure(double h, Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure);
 		void updateVelocityFromPressureGradient(double h, Eigen::SparseMatrix<double> velocity);
 
 
@@ -55,6 +55,8 @@ namespace FluidSimulation
 		friend class EulerSimulationLevelSetTest_SphereAdvection_Test;
 		friend class EulerSimulationLevelSetTest_ConstantVelocityAdvection_Test;
 		friend class EulerSimulationLevelSetTest_GravityEnabled_Test;
+		friend class EulerSimulationPressureTest;
+		friend class EulerSimulationPressureTest_HydrostaticPressure_Test;
 	};
 
 }
