@@ -62,6 +62,7 @@ namespace FluidSimulation
 		/* SET SIZES */
 		m_velocity.resize(getGridMatrixSize(true), 3);
 		m_pressure.resize(getGridMatrixSize(false), 1);
+		m_pressure.setZero();
 		m_dSignedDistance.resize(getGridMatrixSize(true), 3);
 		m_signedDistance.resize(getGridMatrixSize(true), 1);
 		spdlog::info("Finished Constructing EulerState");
@@ -116,15 +117,18 @@ namespace FluidSimulation
 				{
 					// Index
 					int i = z + y * m_dims( Z ) + x * m_dims( Z ) * m_dims( Y );
+					int iMid = z + y * (m_dims(Z) + 1) + x * (m_dims(Z) + 1) * (m_dims(Y) + 1);
+					int dir = -1;
+					bool withinBounds = (dim == X && ((x + dir) >= 0 && (x + dir < m_dims(X)))) || (dim == Y && ((y + dir) >= 0 && (y + dir < m_dims(Y)))) || (dim == Z && ((z + dir) >= 0 && (z + dir < m_dims(Z))));
 
 					// If it's a mid-point grid location, the value on both sides are known
 					if (midGrid)
 					{
 						triplets.emplace_back(i, i, -1.0);
-						triplets.emplace_back(i, i + spacing, 1.0);
+						triplets.emplace_back(i, iMid + spacing, 1.0);
 					}
 					// Within bounds
-					else if (i - spacing >= 0 && i < getGridMatrixSize(false))
+					else if (withinBounds && i - spacing >= 0 && i < getGridMatrixSize(false))
 					{
 
 						triplets.emplace_back(i, i - spacing, 1.0);
@@ -170,11 +174,12 @@ namespace FluidSimulation
 					{
 						for (int dir = -1; dir <= 1; dir += 2)
 						{
+							bool withinBounds = (dim == X && ((x + dir) >= 0 && (x + dir < m_dims(X)))) || (dim == Y && ((y + dir) >= 0 && (y + dir < m_dims(Y)))) || (dim == Z && ((z + dir) >= 0 && (z + dir < m_dims(Z))));
 							// Only add this central difference if it is defined
-							if (i + dir * spacing[dim] >= 0 && i + dir * spacing[dim] < getGridMatrixSize(false))
+							if (withinBounds && i + dir * spacing[dim] >= 0 && i + dir * spacing[dim] < getGridMatrixSize(false))
 							{
-								triplets.emplace_back(i, i, 1 / m_gridSizeHorizontal(dim));
-								triplets.emplace_back(i, i + dir * spacing[dim], 1 / m_gridSizeHorizontal(dim));
+								triplets.emplace_back(i, i, 1 / (m_gridSizeHorizontal(dim) * m_gridSizeHorizontal(dim)));
+								triplets.emplace_back(i, i + dir * spacing[dim], -1 / (m_gridSizeHorizontal(dim) * m_gridSizeHorizontal(dim)));
 							}
 						}
 					}
@@ -263,6 +268,7 @@ namespace FluidSimulation
 		getQuantityGradient(dvDir, true, quantity);
 
 		Eigen::SparseVector<double, Eigen::ColMajor> ones(3, 1);
+		ones.reserve(3);
 		ones.insert(0, 0) = 1;
 		ones.insert(1, 0) = 1;
 		ones.insert(2, 0) = 1;

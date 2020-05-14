@@ -2,7 +2,8 @@
 #include <cmath>
 #include <Eigen/Core>
 #include <Eigen/Sparse>
-#include <Eigen/IterativeLinearSolvers>
+//#include <Eigen/IterativeLinearSolvers>
+#include <Eigen/SparseCholesky>
 #include "EulerSimulation.h"
 #include "EulerState.h"
 #include "spdlog/spdlog.h"
@@ -70,6 +71,21 @@ namespace FluidSimulation
 				weights[1] = std::modf(closestPosition(1) / m_currentState.m_gridSizeHorizontal(1), &closestIndexY);
 				weights[2] = std::modf(closestPosition(2) / m_currentState.m_gridSizeHorizontal(2), &closestIndexZ);
 				size_t closestIndex = (size_t)closestIndexZ + (size_t)closestIndexY * (m_currentState.m_dims(Z) + 1) + (size_t)closestIndexX * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
+				// If we're not inside yet, then step a little further in
+				while (closestIndex >= 0 && closestIndex < m_currentState.getGridMatrixSize(true) && m_currentState.m_signedDistance(closestIndex) > 0)
+				{
+					int dirToMove, amount;
+					m_currentState.m_dSignedDistance.row(i).maxCoeff(&dirToMove);
+
+					closestIndex -= ((dirToMove == 2) * 1 + (dirToMove == 1) * (m_currentState.m_dims(2) + 1) + (dirToMove == 0) * (m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1));
+					weights[dirToMove] = 1 - weights[dirToMove];
+
+					/*closestPosition -= 0.1 * m_currentState.m_signedDistance(i) * m_currentState.m_dSignedDistance.row(i);
+					weights[0] = std::modf(closestPosition(0) / m_currentState.m_gridSizeHorizontal(0), &closestIndexX);
+					weights[1] = std::modf(closestPosition(1) / m_currentState.m_gridSizeHorizontal(1), &closestIndexY);
+					weights[2] = std::modf(closestPosition(2) / m_currentState.m_gridSizeHorizontal(2), &closestIndexZ);
+					closestIndex = (size_t)closestIndexZ + (size_t)closestIndexY * (m_currentState.m_dims(Z) + 1) + (size_t)closestIndexX * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);*/
+				}
 
 				for (int dim = 0; dim < 3; dim++)
 				{
@@ -77,7 +93,7 @@ namespace FluidSimulation
 					//double weight = std::modf(closestPosition(dim) / m_currentState.m_gridSizeHorizontal(dim), &closestIndex);
 					double weight = weights[dim];
 					int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
-					bool withinBoundaryOutgoing = (i + offset >= 0) && (i + offset < m_currentState.getGridMatrixSize(true));
+					bool withinBoundaryOutgoing = (i + offset >= 0) && (i + offset < m_currentState.getGridMatrixSize(true)) && m_currentState.m_velocity.coeff(i + offset, dim);
 
 					tripletsMid[dim].emplace_back(i, i, (1 - 0.5 * withinBoundaryOutgoing));
 					if (withinBoundaryOutgoing)
@@ -193,9 +209,18 @@ namespace FluidSimulation
 				double value = it.value() * h / m_currentState.m_gridSizeHorizontal(it.col());
 				int direction = (value < 0) ? 1 : -1;
 				int offset = (it.col() == Z) * 1 + (it.col() == Y) * (m_currentState.m_dims(Z) + 1) + (it.col() == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
-				bool withinBoundaryIncoming = (it.row() - offset >= 0) && (it.row() - offset < m_currentState.getGridMatrixSize(true));
+				// TODO: Update this. I'm not properly checking if we're within bounds
+				int dimIndex = (it.col() == 2) * (it.row() % (m_currentState.m_dims(2) + 1)) +
+											 (it.col() == 1) * ( (it.row() / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
+					             (it.col() == 0) * (it.row() / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
+
+				bool withinBoundaryIncoming = (dimIndex - 1 >= 0);
+				bool withinBoundaryOutgoing = (dimIndex + 1 < m_currentState.m_dims(it.col()));
+				bool within2BoundaryOutgoing = (dimIndex < m_currentState.m_dims(it.col()));
+
+				/*bool withinBoundaryIncoming = (it.row() - offset >= 0) && (it.row() - offset < m_currentState.getGridMatrixSize(true));
 				bool withinBoundaryOutgoing = (it.row() + offset >= 0) && (it.row() + offset < m_currentState.getGridMatrixSize(true));
-				bool within2BoundaryOutgoing = (it.row() + 2 * offset >= 0) && (it.row() + 2 * offset < m_currentState.getGridMatrixSize(true));
+				bool within2BoundaryOutgoing = (it.row() + 2 * offset >= 0) && (it.row() + 2 * offset < m_currentState.getGridMatrixSize(true));*/
 
 				// If the cell is at an edge, keep velocity at zero per Neumann condition
 				if (withinBoundaryIncoming && within2BoundaryOutgoing)
@@ -288,7 +313,8 @@ namespace FluidSimulation
 						it.valueRef() += h * m_gravity;
 						++it;
 					} 
-					else if (signedDistance(i) <= 3 * m_currentState.m_gridSizeHorizontal.maxCoeff())
+					// TODO: OVERRIDE AND WRITE THE VELOCITY EVERYWHERE
+					else if (true || signedDistance(i) <= 3 * m_currentState.m_gridSizeHorizontal.maxCoeff())
 					{
 							valuesToInsert.push_back(i);
 					}
@@ -299,79 +325,103 @@ namespace FluidSimulation
 		{
 			velocity.insert(*it, Z) = h * m_gravity;
 		}
+		velocity.makeCompressed();
 	}
 
-	void EulerSimulation::updatePressure(double h, const Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure)
+	void EulerSimulation::updatePressure(double h, Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure)
 	{
-
 		// Divergence of velocity
 		Eigen::VectorXd p = m_currentState.m_pressure;
-		Eigen::SparseMatrix<double> dv, d2p;
-		m_currentState.getQuantityDivergence(dv, velocity);
+		Eigen::SparseMatrix<double> dv, d2p, dp;
 
 		m_currentState.getLaplacianOperator(d2p);
 
-		d2p *= h / m_density;
-
-		Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower|Eigen::Upper> cgSolver;
-		cgSolver.compute(d2p);
-		p = cgSolver.solveWithGuess(-(Eigen::VectorXd)dv, p);
-
-		pressure = p.sparseView();
-		m_currentState.m_pressure = pressure;
-
-		
-
-
-
-
-
-
-		/*
-		Eigen::SparseMatrix<double> dp;
-
-		m_currentState.getPressureGradient(dp);
-		
 		for (int x = 0; x < m_currentState.m_dims(X); x++)
 		{
 			for (int y = 0; y < m_currentState.m_dims(Y); y++)
 			{
-				int i = y * m_currentState.m_dims(Z) + x * m_currentState.m_dims(Z) * m_currentState.m_dims(Y);
-
-				// Set the bottom boundary to Neumann boundary condition
-				for (int dim = 0; dim < 3; dim++)
+				for (int z = 0; z < m_currentState.m_dims(Z); z++)
 				{
-					dp.coeffRef(i, dim) += m_density * m_currentState.m_gridSizeHorizontal(dim) * velocity.coeff(i, dim) / h;
+					int iElement = z + y * (m_currentState.m_dims(Z) + 1) + x * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
+					int i = z + y * (m_currentState.m_dims(Z)) + x * (m_currentState.m_dims(Z)) * (m_currentState.m_dims(Y));
+
+					if (m_currentState.m_signedDistance(iElement) > 0)
+					{
+						d2p.coeffRef(i, i) = 1;
+						// Make sure this air cell doesn't factor into any other cells
+						// Also make sure this cell is stand-alone so it receives the value of the divergence at that point
+						if (i - 1 >= 0)
+						{
+							d2p.coeffRef(i - 1, i) = 0;
+							d2p.coeffRef(i, i - 1) = 0;
+						}
+						if (i - m_currentState.m_dims(Z) >= 0)
+						{
+							d2p.coeffRef(i - m_currentState.m_dims(Z), i) = 0;
+							d2p.coeffRef(i, i - m_currentState.m_dims(Z)) = 0;
+						}
+						if (i - m_currentState.m_dims(Z) * m_currentState.m_dims(Y) >= 0)
+						{
+							d2p.coeffRef(i - m_currentState.m_dims(Z) * m_currentState.m_dims(Y), i) = 0;
+							d2p.coeffRef(i, i - m_currentState.m_dims(Z) * m_currentState.m_dims(Y)) = 0;
+						}
+						if (i + 1 < m_currentState.getGridMatrixSize(false))
+						{
+							d2p.coeffRef(i + 1, i) = 0;
+							d2p.coeffRef(i, i + 1) = 0;
+						}
+						if (i + m_currentState.m_dims(Z) < m_currentState.getGridMatrixSize(false))
+						{
+							d2p.coeffRef(i + m_currentState.m_dims(Z), i) = 0;
+							d2p.coeffRef(i, i + m_currentState.m_dims(Z)) = 0;
+						}
+						if (i + m_currentState.m_dims(Z) * m_currentState.m_dims(Y) < m_currentState.getGridMatrixSize(false))
+						{
+							d2p.coeffRef(i + m_currentState.m_dims(Z) * m_currentState.m_dims(Y), i) = 0;
+							d2p.coeffRef(i, i + m_currentState.m_dims(Z) * m_currentState.m_dims(Y)) = 0;
+						}
+
+
+					}
 				}
 			}
 		}
 
-		//velocity -= h * dp / m_density;
-		Eigen::SparseVector<double, Eigen::ColMajor> ones(3, 1);
-		ones.insert(0, 0) = 1;
-		ones.insert(1, 0) = 1;
-		ones.insert(2, 0) = 1;
 
-		dp * ones;
+		d2p *= h / m_density;
 
-		Eigen::SparseMatrix<double> pressureMatrix;
+		spdlog::debug("Solving for pressure with the following inputs");
+		spdlog::debug("velocity = \n{}", velocity);
+		spdlog::debug("div v = \n{}", dv);
+		spdlog::debug("d2p = \n{}", d2p);
 
-		for (int x = 0; x < m_currentState.m_dims(X); x++)
-		{
-			for (int y = 0; y < m_currentState.m_dims(Y); y++)
-			{
-				for (int z = 0; x < m_currentState.m_dims(Z); z++)
-				{
-					int i = z + y * m_currentState.m_dims(Z) + x * m_currentState.m_dims(Z) * m_currentState.m_dims(Y);
+		/* SOLVE */
+		// Solve with modified Cholesky preconditioner
+		//Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower | Eigen::Upper> cgSolver;
 
-					for (int dim = 0; dim < 3; dim++)
-					{
-						pressureMatrix.coeffRef(i, i) = 1 / m_currentState.m_gridSizeHorizontal(dim);
-						pressureMatrix.coeffRef(i, i + 1) = 1 / m_currentState.m_gridSizeHorizontal(dim);
-					}
-				}
-			}
-		}*/
+		//Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<double, Eigen::Lower | Eigen::Upper>> cgSolver;
+		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(d2p);
+		
+		m_currentState.getQuantityDivergence(dv, velocity);
+		//solver.compute(d2p);
+		pressure = solver.solve(-dv);
+		//pressure = p.sparseView();
+		m_currentState.m_pressure = pressure;
+
+		m_currentState.getPressureGradient(dp);
+
+		velocity -= h / m_density * m_currentState.m_midToElement.transpose() * dp;
+		//p = cgSolver.solveWithGuess(-(Eigen::VectorXd)dv, p);
+
+		spdlog::info("Solver info: {} in {} iterations", solver.info() == Eigen::Success ? "Successfully converged" : "Did not successfully converge", "n/a");
+		//spdlog::info("Solver error: {}", solver)
+
+		spdlog::debug("Results");
+		spdlog::debug("p = \n{}", pressure);
+
+
+		//pressure = p.sparseView();
+		m_currentState.m_pressure = pressure;
 	}
 
 	void EulerSimulation::updateVelocityFromPressureGradient(double h, Eigen::SparseMatrix<double> velocity)
