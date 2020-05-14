@@ -93,7 +93,16 @@ namespace FluidSimulation
 					//double weight = std::modf(closestPosition(dim) / m_currentState.m_gridSizeHorizontal(dim), &closestIndex);
 					double weight = weights[dim];
 					int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
-					bool withinBoundaryOutgoing = (i + offset >= 0) && (i + offset < m_currentState.getGridMatrixSize(true)) && m_currentState.m_velocity.coeff(i + offset, dim);
+					
+					// TODO: Update this. I'm not properly checking if we're within bounds
+					int dimIndex = (dim == 2) * (i % (m_currentState.m_dims(2) + 1)) +
+						(dim == 1) * ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
+						(dim == 0) * (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
+
+					bool withinBoundaryIncoming = (dimIndex - 1 >= 0);
+					bool withinBoundaryOutgoing = (dimIndex + 1 < m_currentState.m_dims(dim));
+					
+					//bool withinBoundaryOutgoing = (i + offset >= 0) && (i + offset < m_currentState.getGridMatrixSize(true)) && m_currentState.m_velocity.coeff(i + offset, dim);
 
 					tripletsMid[dim].emplace_back(i, i, (1 - 0.5 * withinBoundaryOutgoing));
 					if (withinBoundaryOutgoing)
@@ -209,7 +218,6 @@ namespace FluidSimulation
 				double value = it.value() * h / m_currentState.m_gridSizeHorizontal(it.col());
 				int direction = (value < 0) ? 1 : -1;
 				int offset = (it.col() == Z) * 1 + (it.col() == Y) * (m_currentState.m_dims(Z) + 1) + (it.col() == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
-				// TODO: Update this. I'm not properly checking if we're within bounds
 				int dimIndex = (it.col() == 2) * (it.row() % (m_currentState.m_dims(2) + 1)) +
 											 (it.col() == 1) * ( (it.row() / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
 					             (it.col() == 0) * (it.row() / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
