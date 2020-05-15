@@ -42,6 +42,7 @@ namespace FluidSimulation
 		// (n x m) (m x 3) -> (n x 3)
 		m_midToElement.resize(getGridMatrixSize(false), getGridMatrixSize(true));
 		Eigen::MatrixXd helper(getGridMatrixSize(false), getGridMatrixSize(true));
+		helper.setZero();
 		spdlog::info("Helper Size = {} x {}", getGridMatrixSize(false), getGridMatrixSize(true));
 		for (int x = 0; x < m_dims(X); x++)
 		{
