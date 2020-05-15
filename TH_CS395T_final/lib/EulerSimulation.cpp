@@ -222,14 +222,14 @@ namespace FluidSimulation
 				for (int dim = 0; dim < 3; dim++)
 				{
 					triplets[dim].emplace_back(i, i, 1);
-					int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
+					/*int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
 					bool withinBoundaryOutgoing = (i + offset >= 0) && (i + offset < m_currentState.getGridMatrixSize(true));
 
 					tripletsMid[dim].emplace_back(i, i, (1 - 0.5 * withinBoundaryOutgoing));
 					if (withinBoundaryOutgoing)
 					{
 						tripletsMid[dim].emplace_back(i, i + offset, 0.5);
-					}
+					}*/
 				}
 			}
 
@@ -257,10 +257,6 @@ namespace FluidSimulation
 		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
 		interpolateY.setFromTriplets(triplets[1].begin(), triplets[1].end());
 		interpolateZ.setFromTriplets(triplets[2].begin(), triplets[2].end());
-		spdlog::info("Interpolate X = \n{}", interpolateX.block(0,0,1,500));
-		spdlog::info("Interpolate Y = \n{}", interpolateY.block(0, 0, 1, 500));
-		spdlog::info("Interpolate Z = \n{}", interpolateZ.block(0, 0, 1, 500));
-
 
 		spdlog::debug("Setting Velocity from Extrapolation");
 		Eigen::SparseMatrix<double, Eigen::ColMajor> temp;
@@ -279,9 +275,6 @@ namespace FluidSimulation
 		interpolateX.makeCompressed();
 		interpolateY.makeCompressed();
 		interpolateZ.makeCompressed();
-		spdlog::info("Interpolate X Mid = \n{}", interpolateX.block(0, 0, 1, 500));
-		spdlog::info("Interpolate Y Mid = \n{}", interpolateY.block(0, 0, 1, 500));
-		spdlog::info("Interpolate Z Mid = \n{}", interpolateZ.block(0, 0, 1, 500));
 		velocityMid.col(0) = interpolateX * velocityField.col(0);
 		velocityMid.col(1) = interpolateY * velocityField.col(1);
 		velocityMid.col(2) = interpolateZ * velocityField.col(2);
@@ -312,6 +305,7 @@ namespace FluidSimulation
 		{
 			for (Eigen::SparseMatrix<double>::InnerIterator it(velocityField, k); it; ++it)
 			{
+				int row = it.row();
 				double value = it.value() * h / m_currentState.m_gridSizeHorizontal(it.col());
 				int direction = (value < 0) ? 1 : -1;
 				int offset = (it.col() == Z) * 1 + (it.col() == Y) * (m_currentState.m_dims(Z) + 1) + (it.col() == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
@@ -346,11 +340,6 @@ namespace FluidSimulation
 		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
 		interpolateY.setFromTriplets(triplets[1].begin(), triplets[1].end());
 		interpolateZ.setFromTriplets(triplets[2].begin(), triplets[2].end());
-
-		spdlog::info("Advect Interpolate X = \n{}", interpolateX.block(0, 0, 1, 500));
-		spdlog::info("Advect Interpolate Y = \n{}", interpolateY.block(0, 0, 1, 500));
-		spdlog::info("Advect Interpolate Z = \n{}", interpolateZ.block(0, 0, 1, 500));
-
 
 		//spdlog::debug("Interpolate size = {} x {}", interpolateX.rows(), interpolateX.cols());
 		Eigen::SparseMatrix<double, Eigen::ColMajor> temp;
@@ -533,7 +522,6 @@ namespace FluidSimulation
 
 		spdlog::debug("Solving for pressure with the following inputs");
 		spdlog::debug("velocity = \n{}", velocity);
-		spdlog::debug("div v = \n{}", dv);
 		spdlog::debug("d2p = \n{}", d2p);
 
 		/* SOLVE */
@@ -544,6 +532,7 @@ namespace FluidSimulation
 		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(d2p);
 		
 		m_currentState.getQuantityDivergence(dv, velocity);
+		spdlog::debug("div v = \n{}", dv);
 		//solver.compute(d2p);
 		pressure = solver.solve(-dv);
 		//pressure = p.sparseView();
@@ -552,6 +541,7 @@ namespace FluidSimulation
 		m_currentState.getPressureGradient(dp);
 		spdlog::info("dp = \n{}", dp);
 		spdlog::info("midToElement = \n{}", m_currentState.m_midToElement);
+		// Note: The way I have defined velocity, 
 		velocity -= h / m_density * m_currentState.m_midToElement.transpose() * dp;
 		//p = cgSolver.solveWithGuess(-(Eigen::VectorXd)dv, p);
 
@@ -563,7 +553,7 @@ namespace FluidSimulation
 
 
 		//pressure = p.sparseView();
-		m_currentState.m_pressure = pressure;
+		//m_currentState.m_pressure = pressure;
 	}
 
 	void EulerSimulation::updateVelocityFromPressureGradient(double h, Eigen::SparseMatrix<double> velocity)
