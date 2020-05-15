@@ -82,8 +82,14 @@ namespace FluidVisualizer
 					int i = z + y * (m_simulation->getState()->m_dims(Z) + 1) + x * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1);
 					Eigen::Vector3d position(x + 0.5, y + 0.5, z + 0.5);
 					position = position.cwiseProduct(m_simulation->getState()->m_gridSizeHorizontal);
-					Eigen::Vector3d direction = (position - sphereCenter);
-					double distance = (direction).norm() - radius;
+					Eigen::Vector3d direction;
+					double distance;
+
+					direction = Eigen::Vector3d(0, 0, 1.0);
+					distance = position(2) - sphereCenter(2);
+					
+					//direction = (position - sphereCenter);
+				  //distance = (direction).norm() - radius;
 
 					// Set component 0 to the distance
 					m_simulation->updateState()->m_signedDistance(i) = distance;
