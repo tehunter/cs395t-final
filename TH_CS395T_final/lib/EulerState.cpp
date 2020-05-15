@@ -42,6 +42,7 @@ namespace FluidSimulation
 		// (n x m) (m x 3) -> (n x 3)
 		m_midToElement.resize(getGridMatrixSize(false), getGridMatrixSize(true));
 		Eigen::MatrixXd helper(getGridMatrixSize(false), getGridMatrixSize(true));
+		helper.setZero();
 		spdlog::info("Helper Size = {} x {}", getGridMatrixSize(false), getGridMatrixSize(true));
 		for (int x = 0; x < m_dims(X); x++)
 		{
@@ -68,7 +69,7 @@ namespace FluidSimulation
 		spdlog::info("Finished Constructing EulerState");
 	};
 
-	const size_t EulerState::getGridMatrixSize(bool midGrid)
+	const size_t EulerState::getGridMatrixSize(bool midGrid) const
 	{ 
 		int size = 0;
 		if (!midGrid)
@@ -189,7 +190,7 @@ namespace FluidSimulation
 		stencil.setFromTriplets(triplets.begin(), triplets.end());
 	}
 
-	void EulerState::getCentralDifferenceStencil(Dimension dim, bool midGrid, Eigen::SparseMatrix<double, Eigen::ColMajor>& stencil)
+	void EulerState::getCentralDifferenceStencil(Dimension dim, bool midGrid, Eigen::SparseMatrix<double, Eigen::ColMajor>& stencil) const
 	{
 		if (!midGrid)
 		{
@@ -223,7 +224,7 @@ namespace FluidSimulation
 		}
 	}
 
-	void EulerState::getQuantityGradient(Eigen::SparseMatrix<double, Eigen::ColMajor>& dv, bool midGrid, const Eigen::SparseMatrix<double>& quantity)
+	void EulerState::getQuantityGradient(Eigen::SparseMatrix<double, Eigen::ColMajor>& dv, bool midGrid, const Eigen::SparseMatrix<double>& quantity) const
 	{
 		//Eigen::SparseMatrix<double, Eigen::ColMajor> xStencil, yStencil, zStencil;
 		//Eigen::SparseMatrix<double, Eigen::ColMajor> dv(3, getGridMatrixSize());
@@ -254,12 +255,12 @@ namespace FluidSimulation
 		}
 	}
 
-	void EulerState::getPressureGradient(Eigen::SparseMatrix<double>& dp)
+	void EulerState::getPressureGradient(Eigen::SparseMatrix<double>& dp) const
 	{
 		getQuantityGradient(dp, false, m_pressure);
 	}
 
-	void EulerState::getQuantityDivergence(Eigen::SparseMatrix<double>& dv, const Eigen::SparseMatrix<double> quantity)
+	void EulerState::getQuantityDivergence(Eigen::SparseMatrix<double>& dv, const Eigen::SparseMatrix<double> quantity) const
 	{
 		Eigen::SparseMatrix<double> dvDir;
 
@@ -276,12 +277,12 @@ namespace FluidSimulation
 		dv = dvDir * ones;
 	}
 
-	void EulerState::getLaplacianOperator(Eigen::SparseMatrix<double>& d2v)
+	void EulerState::getLaplacianOperator(Eigen::SparseMatrix<double>& d2v) const
 	{
 		d2v = m_laplacian;
 	}
 
-	Eigen::Vector3d EulerState::getLocalCoordinatesOfElement(size_t gridIndex, bool midGrid)
+	Eigen::Vector3d EulerState::getLocalCoordinatesOfElement(size_t gridIndex, bool midGrid) const
 	{
 		size_t x, y, z;
 		z = gridIndex % (m_dims(Z) + midGrid);
