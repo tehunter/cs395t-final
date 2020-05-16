@@ -11,19 +11,20 @@ enum Dimension{X, Y, Z};
 namespace FluidVisualizer
 {
 	ParticleVisualizer::ParticleVisualizer(FluidSimulation::EulerSimulation* simulation) : 
-		m_simulation(simulation), sim_thread(NULL), please_pause(false), please_die(false), running(false)
+		m_simulation(simulation), sim_thread(NULL), please_pause(false), please_die(false), running(false), m_scenario(Hydrostatic)
 	{
 		/* FLOOR */
 		if (true)
 		{
 			double floory = 0.0;
 			renderQ.resize(5, 3);
+			renderC.resize(5, 3);
 			// floor
-			renderQ.row(0) << 0, floory, 0;
-			renderQ.row(1) << 1e6, floory, 1e6;
-			renderQ.row(2) << -1e6, floory, 1e6;
-			renderQ.row(3) << -1e6, floory, -1e6;
-			renderQ.row(4) << 1e6, floory, -1e6;
+			renderQ.row(0) << 0, 0, floory; renderC.row(0) << 0.5, 0.5, 0.5;
+			renderQ.row(1) << 1e6, 1e6, floory; renderC.row(1) << 0.5, 0.5, 0.5;
+			renderQ.row(2) << -1e6, 1e6, floory; renderC.row(2) << 0.5, 0.5, 0.5;
+			renderQ.row(3) << -1e6, -1e6, floory; renderC.row(3) << 0.5, 0.5, 0.5;
+			renderQ.row(4) << 1e6, -1e6, floory; renderC.row(4) << 0.5, 0.5, 0.5;
 
 			renderF.resize(4, 3);
 			renderF.row(0) << 0, 2, 1;
@@ -70,6 +71,34 @@ namespace FluidVisualizer
 
 	void ParticleVisualizer::initSimulation()
 	{
+		int nverts = 5, nfaces = 4;
+
+		/* WALLS */
+		if (true)
+		{
+			renderQ.conservativeResize(nverts +6, 3);
+			renderC.conservativeResize(nverts +6, 3);
+			renderQ.row(nverts) << 0, 0, 0; renderC.row(nverts) << 0.1, 0.1, 0.1;
+			renderQ.row(nverts + 1) << m_simulation->getState()->m_dims(0) * m_simulation->getState()->m_gridSizeHorizontal(0), 0, 0; renderC.row(nverts + 1) << 0.1, 0.1, 0.1;
+			renderQ.row(nverts + 2) << m_simulation->getState()->m_dims(0) * m_simulation->getState()->m_gridSizeHorizontal(0), 0, m_simulation->getState()->m_dims(2)* m_simulation->getState()->m_gridSizeHorizontal(2); renderC.row(nverts + 2) << 0.1, 0.1, 0.1;
+			renderQ.row(nverts + 3) << 0, m_simulation->getState()->m_dims(1) * m_simulation->getState()->m_gridSizeHorizontal(1), 0; renderC.row(nverts + 3) << 0.1, 0.1, 0.1;
+			renderQ.row(nverts + 4) << 0, m_simulation->getState()->m_dims(1)* m_simulation->getState()->m_gridSizeHorizontal(1), m_simulation->getState()->m_dims(2)* m_simulation->getState()->m_gridSizeHorizontal(2); renderC.row(nverts + 4) << 0.1, 0.1, 0.1;
+			renderQ.row(nverts + 5) << 0, 0, m_simulation->getState()->m_dims(2) * m_simulation->getState()->m_gridSizeHorizontal(2); renderC.row(nverts + 5) << 0.1, 0.1, 0.1;
+			
+
+			renderF.conservativeResize(nfaces + 4, 3);
+			// x-z
+			renderF.row(nfaces) << nverts, nverts + 5, nverts + 1;
+			// y-z
+			renderF.row(nfaces+1) << nverts, nverts + 5, nverts + 3;
+			// x-z
+			renderF.row(nfaces+2) << nverts + 5, nverts + 2, nverts + 1;
+			// y-z
+			renderF.row(nfaces+3) << nverts + 5, nverts + 3, nverts + 4;
+			nfaces += 4;
+			nverts += 6;
+		}
+
 		Eigen::Vector3d sphereCenter;
 		sphereCenter = m_simulation->getState()->m_gridSizeHorizontal.cwiseProduct(m_simulation->getState()->m_dims.cast<double>()) / 2.0;
 		double radius = sphereCenter(0) / 3.0;
@@ -83,13 +112,22 @@ namespace FluidVisualizer
 					Eigen::Vector3d position(x + 0.5, y + 0.5, z + 0.5);
 					position = position.cwiseProduct(m_simulation->getState()->m_gridSizeHorizontal);
 					Eigen::Vector3d direction;
-					double distance;
+					double distance = 999;
 
-					direction = Eigen::Vector3d(0, 0, 1.0);
-					distance = position(2) - sphereCenter(2);
-					
-					//direction = (position - sphereCenter);
-				  //distance = (direction).norm() - radius;
+					switch (m_scenario)
+					{
+					case Hydrostatic:
+						direction = Eigen::Vector3d(0, 0, 1.0);
+						distance = position(2) - sphereCenter(2);
+						break;
+					case Sphere:
+						direction = (position - sphereCenter);
+						if (direction.norm() > 0)
+							distance = (direction).norm() - radius;
+						else
+							distance = -radius;
+						break;
+					}
 
 					// Set component 0 to the distance
 					m_simulation->updateState()->m_signedDistance(i) = distance;
@@ -129,11 +167,16 @@ namespace FluidVisualizer
 		//render(viewer);
 
 		render_mutex.lock();
+
+		Eigen::Matrix3d p;
+		p << 1, 0, 0, 0, 0, 1, 0, 1, 0;
 		
-		viewer.data().clear();
-		viewer.data().set_mesh(renderQ, renderF);
-		viewer.data().add_points(renderP, Eigen::RowVector3d(0.19, 0.2, 1.0));
-		viewer.data().set_colors(renderC);
+		viewer.data(0).clear();
+		viewer.data(1).clear();
+		viewer.data(0).set_mesh(renderQ * p, renderF);
+		viewer.data(0).set_colors(renderC);
+		if (renderP.rows() > 0)
+			viewer.data(1).add_points(renderP * p, pointColors);
 
 		render_mutex.unlock();
 
@@ -147,7 +190,7 @@ namespace FluidVisualizer
 		int numcirclewedges = 10;
 
 		std::vector<Eigen::Vector3d> verts;
-		std::vector<Eigen::Vector3d> points;
+		std::vector<Eigen::Vector3d> points, colors;
 		std::vector<Eigen::Vector3d> vertexColors;
 		std::vector<Eigen::Vector3i> faces;
 
@@ -161,15 +204,16 @@ namespace FluidVisualizer
 		{
 			Eigen::Vector3d color(0, 0, 1.0);
 
-			for (int scatterBalls = 0; scatterBalls < 6; scatterBalls++)
+			for (int scatterBalls = 0; scatterBalls < 1; scatterBalls++)
 			{
 
 
-				Eigen::Vector3d pos = m_simulation->getState()->getLocalCoordinatesOfElement(i, false);
+				Eigen::Vector3d pos = m_simulation->getState()->getLocalCoordinatesOfElement(i, true);
 				if (m_simulation->getState()->m_signedDistance(i) <= 0)
 				{
-					pos += Eigen::Vector3d::Random() * m_simulation->getState()->m_gridSizeHorizontal.minCoeff();
+					//pos += Eigen::Vector3d::Random() * m_simulation->getState()->m_gridSizeHorizontal.minCoeff() / 10.0;
 					points.push_back(Eigen::Vector3d(pos[0], pos[1], pos[2]));
+					colors.push_back(Eigen::Vector3d(0.8, 0.0, 0.0) * std::min(m_simulation->getState()->m_velocity.row(i).norm() / 3.0, 1.0) + Eigen::Vector3d(0.2, 0.2, 0.2));
 				}
 
 				const double PI = 3.1415926535898;
@@ -195,22 +239,26 @@ namespace FluidVisualizer
 			}
 		}
 
-		renderQ.resize(verts.size(), 3);
-		renderC.resize(vertexColors.size(), 3);
-		for (int i = 0; i < verts.size(); i++)
-		{
-			renderQ.row(i) = verts[i];
-			renderC.row(i) = vertexColors[i];
-		}
-		renderF.resize(faces.size(), 3);
-		for (int i = 0; i < faces.size(); i++)
-			renderF.row(i) = faces[i];
+		//renderQ.resize(verts.size(), 3);
+		//renderC.resize(vertexColors.size(), 3);
+		//for (int i = 0; i < verts.size(); i++)
+		//{
+			//renderQ.row(i) = verts[i];
+			//renderC.row(i) = vertexColors[i];
+		//}
+		//renderF.resize(faces.size(), 3);
+		//for (int i = 0; i < faces.size(); i++)
+			//renderF.row(i) = faces[i];
 
+		renderP.setZero();
+		pointColors.setZero();
 		renderP.resize(points.size(), 3);
+		pointColors.resize(points.size(), 3);
 		for (int i = 0; i < points.size(); i++)
-			renderP.row(i) = points[i];
-
-
+		{
+			renderP.row(i) = points[i].transpose();
+			pointColors.row(i) = colors[i].transpose();
+		}
 	}
 
 	bool ParticleVisualizer::keyCallback(igl::opengl::glfw::Viewer& viewer, unsigned int key, int modifiers)
@@ -278,6 +326,17 @@ namespace FluidVisualizer
 			if (ImGui::Button("Reset Sim", ImVec2(-1, 0)))
 			{
 				resetSimulation();
+			}
+		}
+		if (ImGui::CollapsingHeader("Simulation Scenario", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			std::string strings[2] = { "Hydrostatic Volume", "Falling Sphere" };
+			for (int i = 0; i < 2; i++)
+			{
+				if (ImGui::RadioButton(strings[i].c_str(), m_scenario == i))
+				{
+					m_scenario = (Scenario)i;
+				}
 			}
 		}
 		//m_simulation->drawGUI(menu);

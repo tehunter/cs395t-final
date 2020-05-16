@@ -23,13 +23,13 @@ int main()
 {
 	igl::opengl::glfw::Viewer viewer;
 
-	Eigen::Vector3i dimSize(10, 10, 5);
-	Eigen::Vector3d gridWidth(0.1, 0.1, 0.1);
+	Eigen::Vector3i dimSize(10, 10, 20);
+	Eigen::Vector3d gridWidth(0.2, 0.2, 0.2);
 
 	simulation = new FluidSimulation::EulerSimulation(dimSize, gridWidth);
 	visualizer = new FluidVisualizer::ParticleVisualizer(simulation);
 
-	viewer.data().show_lines = false;
+	viewer.data().show_lines = true;
 	viewer.data().set_face_based(false);
 	viewer.core().is_animating = true;
 	viewer.callback_key_pressed = [](igl::opengl::glfw::Viewer& viewer, unsigned int key, int modifiers) { return visualizer->keyCallback(viewer, key, modifiers); };

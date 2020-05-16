@@ -11,6 +11,7 @@
 
 namespace FluidVisualizer
 {
+	enum Scenario{Hydrostatic, Sphere};
 
 	class ParticleVisualizer
 	{
@@ -43,6 +44,7 @@ namespace FluidVisualizer
 		Eigen::MatrixXd renderQ;
 		Eigen::MatrixXi renderF;
 		Eigen::MatrixXd renderC;
+		Eigen::MatrixXd pointColors;
 		Eigen::MatrixXd renderP;
 
 		void runSimThread();
@@ -55,6 +57,8 @@ namespace FluidVisualizer
 		std::mutex render_mutex;
 		std::mutex status_mutex;
 		std::mutex message_mutex;
+
+		Scenario m_scenario;
 
 	private:
 		FluidSimulation::EulerSimulation* m_simulation;
