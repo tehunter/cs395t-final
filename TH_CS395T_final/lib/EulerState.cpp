@@ -132,8 +132,8 @@ namespace FluidSimulation
 					else if (withinBounds && i - spacing >= 0 && i < getGridMatrixSize(false))
 					{
 
-						triplets.emplace_back(i, i - spacing, 1.0);
-						triplets.emplace_back(i, i, -1.0);
+						triplets.emplace_back(i, i - spacing, -1.0); // 1
+						triplets.emplace_back(i, i, 1.0); // 2  /////-2
 					}
 					// Along an edge - no gradient (e.g. assume pressure is equalized on both sides of the grid cell)
 					else if (i - spacing < 0)

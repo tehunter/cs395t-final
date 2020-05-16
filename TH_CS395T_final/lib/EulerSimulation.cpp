@@ -13,11 +13,11 @@ namespace FluidSimulation
 {
 	void EulerSimulation::step(double h)
 	{
-		Eigen::SparseMatrix<double, Eigen::ColMajor> newVelocity, newVelocityMid;
+		Eigen::SparseMatrix<double, Eigen::ColMajor> newVelocity, oldVelocityMid;
 		Eigen::SparseMatrix<double, Eigen::ColMajor> pressure;
 		std::vector<Eigen::Triplet<double>> triplets[3];
 
-		getExtrapolatedVelocityField(h, newVelocity, newVelocityMid);
+		getExtrapolatedVelocityField(h, newVelocity, oldVelocityMid);
 
 		if (m_enableGravity)
 		{
@@ -26,7 +26,7 @@ namespace FluidSimulation
 		}
 
 		getAdvectedVelocityField(h, newVelocity);
-		advectSignedDistance(h, newVelocityMid);
+		advectSignedDistance(h, oldVelocityMid);
 
 		if (m_enablePressure)
 		{
@@ -35,7 +35,7 @@ namespace FluidSimulation
 			updateVelocityFromPressureGradient(h, newVelocity);
 		}
 
-		spdlog::info("Setting m_currentState.m_velocity = \n{}", newVelocity);
+		//spdlog::info("Setting m_currentState.m_velocity = \n{}", newVelocity);
 		m_currentState.m_velocity = newVelocity;
 		
 	}
@@ -222,14 +222,14 @@ namespace FluidSimulation
 				for (int dim = 0; dim < 3; dim++)
 				{
 					triplets[dim].emplace_back(i, i, 1);
-					int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
+					/*int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
 					bool withinBoundaryOutgoing = (i + offset >= 0) && (i + offset < m_currentState.getGridMatrixSize(true));
 
 					tripletsMid[dim].emplace_back(i, i, (1 - 0.5 * withinBoundaryOutgoing));
 					if (withinBoundaryOutgoing)
 					{
 						tripletsMid[dim].emplace_back(i, i + offset, 0.5);
-					}
+					}*/
 				}
 			}
 
@@ -254,23 +254,6 @@ namespace FluidSimulation
 			}
 		}
 
-		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
-		interpolateY.setFromTriplets(triplets[1].begin(), triplets[1].end());
-		interpolateZ.setFromTriplets(triplets[2].begin(), triplets[2].end());
-		spdlog::info("Interpolate X = \n{}", interpolateX.block(0,0,1,500));
-		spdlog::info("Interpolate Y = \n{}", interpolateY.block(0, 0, 1, 500));
-		spdlog::info("Interpolate Z = \n{}", interpolateZ.block(0, 0, 1, 500));
-
-
-		spdlog::debug("Setting Velocity from Extrapolation");
-		Eigen::SparseMatrix<double, Eigen::ColMajor> temp;
-		temp = interpolateX * m_currentState.m_velocity;
-		velocityField.col(0) = temp.col(0);
-		temp = interpolateY * m_currentState.m_velocity;
-		velocityField.col(1) = temp.col(1);
-		temp = interpolateZ * m_currentState.m_velocity;
-		velocityField.col(2) = temp.col(2);
-
 		interpolateX.setZero(); interpolateY.setZero(); interpolateZ.setZero();
 		interpolateX.setFromTriplets(tripletsMid[0].begin(), tripletsMid[0].end());
 		interpolateY.setFromTriplets(tripletsMid[1].begin(), tripletsMid[1].end());
@@ -279,12 +262,23 @@ namespace FluidSimulation
 		interpolateX.makeCompressed();
 		interpolateY.makeCompressed();
 		interpolateZ.makeCompressed();
-		spdlog::info("Interpolate X Mid = \n{}", interpolateX.block(0, 0, 1, 500));
-		spdlog::info("Interpolate Y Mid = \n{}", interpolateY.block(0, 0, 1, 500));
-		spdlog::info("Interpolate Z Mid = \n{}", interpolateZ.block(0, 0, 1, 500));
-		velocityMid.col(0) = interpolateX * velocityField.col(0);
-		velocityMid.col(1) = interpolateY * velocityField.col(1);
-		velocityMid.col(2) = interpolateZ * velocityField.col(2);
+		velocityMid.col(0) = interpolateX * m_currentState.m_velocity.col(0);
+		velocityMid.col(1) = interpolateY * m_currentState.m_velocity.col(1);
+		velocityMid.col(2) = interpolateZ * m_currentState.m_velocity.col(2);
+
+		interpolateX.setZero(); interpolateY.setZero(); interpolateZ.setZero();
+		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
+		interpolateY.setFromTriplets(triplets[1].begin(), triplets[1].end());
+		interpolateZ.setFromTriplets(triplets[2].begin(), triplets[2].end());
+
+		spdlog::debug("Setting Velocity from Extrapolation");
+		Eigen::SparseMatrix<double, Eigen::ColMajor> temp;
+		temp = interpolateX * m_currentState.m_velocity.col(0);
+		velocityField.col(0) = temp;
+		temp = interpolateY * m_currentState.m_velocity.col(1);
+		velocityField.col(1) = temp;
+		temp = interpolateZ * m_currentState.m_velocity.col(2);
+		velocityField.col(2) = temp;
 		//velocityMid.setFromTriplets(tripletsMid.begin(), tripletsMid.end(), [](const double& a, const double& b) { return a + b; });
 
 
@@ -312,6 +306,7 @@ namespace FluidSimulation
 		{
 			for (Eigen::SparseMatrix<double>::InnerIterator it(velocityField, k); it; ++it)
 			{
+				int row = it.row();
 				double value = it.value() * h / m_currentState.m_gridSizeHorizontal(it.col());
 				int direction = (value < 0) ? 1 : -1;
 				int offset = (it.col() == Z) * 1 + (it.col() == Y) * (m_currentState.m_dims(Z) + 1) + (it.col() == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
@@ -346,11 +341,6 @@ namespace FluidSimulation
 		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
 		interpolateY.setFromTriplets(triplets[1].begin(), triplets[1].end());
 		interpolateZ.setFromTriplets(triplets[2].begin(), triplets[2].end());
-
-		spdlog::info("Advect Interpolate X = \n{}", interpolateX.block(0, 0, 1, 500));
-		spdlog::info("Advect Interpolate Y = \n{}", interpolateY.block(0, 0, 1, 500));
-		spdlog::info("Advect Interpolate Z = \n{}", interpolateZ.block(0, 0, 1, 500));
-
 
 		//spdlog::debug("Interpolate size = {} x {}", interpolateX.rows(), interpolateX.cols());
 		Eigen::SparseMatrix<double, Eigen::ColMajor> temp;
@@ -388,7 +378,7 @@ namespace FluidSimulation
 
 		std::vector<Eigen::Triplet<double>> triplets;
 		
-		spdlog::debug("Velocity Midpoints = \n{}", oldVelocityMid);
+		spdlog::info("Velocity Midpoints = \n{}", oldVelocityMid);
 
 		// Columns
 		for (int k = 0; k < oldVelocityMid.outerSize(); ++k)
@@ -400,7 +390,7 @@ namespace FluidSimulation
 				int offset = (it.col() == Z) * 1 + (it.col() == Y) * (m_currentState.m_dims(Z) + 1) + (it.col() == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
 				int blockSize = (it.col() == Z) * 1 + (it.col() == Y) * 2 + (it.col() == X) * (m_currentState.m_dims(Z) + 1);
 
-				spdlog::info("Row = {}; Col = {}; Offset = {}; Block Size = {}", it.row(), it.col(), offset, blockSize);
+				//spdlog::info("Row = {}; Col = {}; Offset = {}; Block Size = {}", it.row(), it.col(), offset, blockSize);
 
 				if (it.row() + blockSize < m_currentState.getGridMatrixSize(true))
 				{
@@ -417,21 +407,23 @@ namespace FluidSimulation
 					}
 
 
-					interpolateMatrix.block(it.row(), it.row(), 1, blockSize) = interpolateMatrix.block(it.row(), it.row(), 1, blockSize) * (1.0 - std::abs(value));
+					interpolateMatrix.block(it.row(), it.row(), 1, blockSize) = (interpolateMatrix.block(it.row(), it.row(), 1, blockSize) * (1.0 - std::abs(value))).eval();
 					//(it.row(), it.row()) -= std::abs(value);
 				}
 			}
 		}
 
-		//spdlog::debug("Signed Distance Advection: Interpolate Matrix = \n{}", interpolateMatrix);
+		//spdlog::info("Signed Distance Advection: Interpolate Matrix = \n{}", interpolateMatrix);
 		/*spdlog::debug("Old Velocity Mid ({} -> {}, {} -> {}, {} -> {}, {} -> {})", 
 			3, oldVelocityMid.coeff(3 + 5 * 3 + 5 * 3 * 3, 2),
 			2, oldVelocityMid.coeff(2 + 5 * 3 + 5 * 3 * 3, 2),
 			1, oldVelocityMid.coeff(1 + 5 * 3 + 5 * 3 * 3, 2),
 			0, oldVelocityMid.coeff(0 + 5 * 3 + 5 * 3 * 3, 2));*/
-		/*spdlog::debug("Interpolation Matrix Block = \n{}", interpolateMatrix.block<5, 5>(5 * 3 + 5 * 3 * 3, 5 * 3 + 5 * 3 * 3));
-		spdlog::debug("Signed Distance Block = \n{}", m_currentState.m_signedDistance.segment<5>(5 * 3 + 5 * 3 * 3));*/
+		//spdlog::info("Interpolation Matrix Block = \n{}", interpolateMatrix.block<5, 5>(5 * 3 + 5 * 3 * 3, 5 * 3 + 5 * 3 * 3));
+		//spdlog::info("Signed Distance Block = \n{}", m_currentState.m_signedDistance.segment<5>(5 * 3 + 5 * 3 * 3));
+		spdlog::info("Prior Signed Distance = \n{}", m_currentState.m_signedDistance);
 		m_currentState.m_signedDistance = (interpolateMatrix * m_currentState.m_signedDistance).eval();
+		spdlog::info("Updated Signed Distance = \n{}", m_currentState.m_signedDistance);
 		m_currentState.m_dSignedDistance = (interpolateMatrix * m_currentState.m_dSignedDistance).eval();
 		//oldVelocityMid.cwiseQuotient(m_currentState.m_gridSizeHorizontal) * h;
 	}
@@ -531,10 +523,9 @@ namespace FluidSimulation
 
 		d2p *= h / m_density;
 
-		spdlog::debug("Solving for pressure with the following inputs");
-		spdlog::debug("velocity = \n{}", velocity);
-		spdlog::debug("div v = \n{}", dv);
-		spdlog::debug("d2p = \n{}", d2p);
+		//spdlog::debug("Solving for pressure with the following inputs");
+		//spdlog::debug("velocity = \n{}", velocity);
+		//spdlog::debug("d2p = \n{}", d2p);
 
 		/* SOLVE */
 		// Solve with modified Cholesky preconditioner
@@ -544,14 +535,16 @@ namespace FluidSimulation
 		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(d2p);
 		
 		m_currentState.getQuantityDivergence(dv, velocity);
+		//spdlog::debug("div v = \n{}", dv);
 		//solver.compute(d2p);
 		pressure = solver.solve(-dv);
 		//pressure = p.sparseView();
 		m_currentState.m_pressure = pressure;
 
 		m_currentState.getPressureGradient(dp);
-		spdlog::info("dp = \n{}", dp);
-		spdlog::info("midToElement = \n{}", m_currentState.m_midToElement);
+		//spdlog::info("dp = \n{}", dp);
+		//spdlog::info("midToElement = \n{}", m_currentState.m_midToElement);
+		// Note: The way I have defined velocity, 
 		velocity -= h / m_density * m_currentState.m_midToElement.transpose() * dp;
 		//p = cgSolver.solveWithGuess(-(Eigen::VectorXd)dv, p);
 
@@ -559,11 +552,11 @@ namespace FluidSimulation
 		//spdlog::info("Solver error: {}", solver)
 
 		spdlog::debug("Results");
-		spdlog::info("p = \n{}", pressure);
+		//spdlog::info("p = \n{}", pressure);
 
 
 		//pressure = p.sparseView();
-		m_currentState.m_pressure = pressure;
+		//m_currentState.m_pressure = pressure;
 	}
 
 	void EulerSimulation::updateVelocityFromPressureGradient(double h, Eigen::SparseMatrix<double> velocity)

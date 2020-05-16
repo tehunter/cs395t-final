@@ -57,6 +57,8 @@ namespace FluidSimulation
 		friend class EulerSimulationLevelSetTest_GravityEnabled_Test;
 		friend class EulerSimulationPressureTest;
 		friend class EulerSimulationPressureTest_HydrostaticPressure_Test;
+		friend class EulerSimulationPressureTest_SteadyStateHydrostaticPressure_Test;
+
 	};
 
 }
