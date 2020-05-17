@@ -18,6 +18,11 @@ namespace FluidSimulation
 		std::vector<Eigen::Triplet<double>> triplets[3];
 
 		getExtrapolatedVelocityField(h, newVelocity, oldVelocityMid);
+		advectSignedDistance(h, oldVelocityMid);
+		if (m_recalculateLevelSet)
+		{
+			recalculateLevelSet();
+		}
 
 		if (m_enableGravity)
 		{
@@ -26,7 +31,6 @@ namespace FluidSimulation
 		}
 
 		getAdvectedVelocityField(h, newVelocity);
-		advectSignedDistance(h, oldVelocityMid);
 
 		if (m_enablePressure)
 		{
@@ -64,72 +68,22 @@ namespace FluidSimulation
 			bool withinRange = true;
 			if (withinRange && m_currentState.m_signedDistance(i) > 0)
 			{
-				/*Eigen::Vector3d closestPoint;
-				double closestDistance = DBL_MAX;
-				// Loop through the neighbors in each direction to find the closest surface point
-				for (int dim = 0; dim < 3; dim++)
-				{
-					for (int dir = -1; dir < 2; dir += 2)
-					{
-						int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
-
-						int dimIndex = (dim == 2) * (i % (m_currentState.m_dims(2) + 1)) +
-							(dim == 1) * ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
-							(dim == 0) * (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
-
-						bool withinBoundaryIncoming = (dimIndex - 1 >= 0);
-						bool withinBoundaryOutgoing = (dimIndex + 1 < m_currentState.m_dims(dim));
-
-						if ((dir == -1 && withinBoundaryIncoming) || (dir == 1 && withinBoundaryOutgoing))
-						{
-							double grad = (m_currentState.m_signedDistance(i) - m_currentState.m_signedDistance(i + dir * offset)) / m_currentState.m_gridSizeHorizontal(dim);
-							if (grad == 0)
-								continue;
-
-							double intersectingPointDistance = m_currentState.m_signedDistance(i) / std::abs(grad);
-							if (intersectingPointDistance < closestDistance)
-							{
-								closestDistance = intersectingPointDistance;
-								closestPoint = pos;
-								closestPoint(dim) += intersectingPointDistance * dir * (grad > 0 ? 1 : -1);
-							}
-							//0 = ax + b
-							//x = -b/a
-						}
-					}
-				}*/
-
-				/*if (closestDistance < DBL_MAX)
-				{
-					double closestIndexX, closestIndexY, closestIndexZ;
-					double weights[3];
-					weights[0] = std::modf(closestPoint(0) / m_currentState.m_gridSizeHorizontal(0), &closestIndexX);
-					weights[1] = std::modf(closestPoint(1) / m_currentState.m_gridSizeHorizontal(1), &closestIndexY);
-					weights[2] = std::modf(closestPoint(2) / m_currentState.m_gridSizeHorizontal(2), &closestIndexZ);
-					size_t closestIndex = (size_t)closestIndexZ + (size_t)closestIndexY * (m_currentState.m_dims(Z) + 1) + (size_t)closestIndexX * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
-
-				}*/
-
-
-
-
-
-
-
-
 				Eigen::Vector3d closestPosition = m_currentState.m_positionsMid.row(i) - m_currentState.m_signedDistance(i) * m_currentState.m_dSignedDistance.row(i);				
 				
 				//Eigen::Vector3d closestPosition = closestPoint;
 				double closestIndexX, closestIndexY, closestIndexZ;
 				double weights[3];
-				weights[0] = std::modf(closestPosition(0) / m_currentState.m_gridSizeHorizontal(0), &closestIndexX);
-				weights[1] = std::modf(closestPosition(1) / m_currentState.m_gridSizeHorizontal(1), &closestIndexY);
-				weights[2] = std::modf(closestPosition(2) / m_currentState.m_gridSizeHorizontal(2), &closestIndexZ);
+				weights[0] = std::modf(closestPosition(0) / m_currentState.m_gridSizeHorizontal(0) - 0.5, &closestIndexX);
+				weights[1] = std::modf(closestPosition(1) / m_currentState.m_gridSizeHorizontal(1) - 0.5, &closestIndexY);
+				weights[2] = std::modf(closestPosition(2) / m_currentState.m_gridSizeHorizontal(2) - 0.5, &closestIndexZ);
 				size_t closestIndex = (size_t)closestIndexZ + (size_t)closestIndexY * (m_currentState.m_dims(Z) + 1) + (size_t)closestIndexX * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
+				size_t originalClosestIndex = closestIndex;
 				Eigen::Vector3d gradient = -m_currentState.m_dSignedDistance.row(i);
 				bool definedInitially = true;
 				// If we're not inside yet, then step a little further in
-				while (closestIndex >= 0 && closestIndex < m_currentState.getGridMatrixSize(true) && m_currentState.m_signedDistance(closestIndex) > 0 && !gradient.isZero())
+				while (closestIndex >= 0 && closestIndex < m_currentState.getGridMatrixSize(true) && 
+							 m_currentState.m_signedDistance(closestIndex) > 0 &&
+							 !gradient.isZero())
 				{
 					definedInitially = false;
 					int dirToMove, amount;
@@ -188,7 +142,31 @@ namespace FluidSimulation
 					// If both points are outside water volume
 					if (m_currentState.m_signedDistance(closestIndex) > 0 && closestIndex + offset < m_currentState.getGridMatrixSize(true) && m_currentState.m_signedDistance(closestIndex + offset) > 0)
 					{
-						spdlog::warn("Want to extrapolate the velocity field but both points are outside of the water volume");
+						triplets[dim].emplace_back(i, closestIndex, 1);
+
+						/*spdlog::warn("Want to extrapolate the velocity field but both points are outside of the water volume");
+						spdlog::info("Index of unknown cell = {}; Index of original 'closest' cell = {}; Index of 'closest' cell = {}", i, originalClosestIndex, closestIndex);
+						spdlog::info("Distance of unknown cell from surface = {}; distance of original 'closest' cell to surface = {}; distance of 'closest' cell to surface = {}", m_currentState.m_signedDistance(i), m_currentState.m_signedDistance(originalClosestIndex), m_currentState.m_signedDistance(closestIndex));
+						spdlog::info("Gradient of signed distance = {}", m_currentState.m_dSignedDistance.row(i).format(LongFmt));
+						spdlog::info("Signed distance near original 'closest cell' = \n \t\t\t {} \n {} \t {} \t {} \t | X = \t {} \t {} \t {} \n \t\t\t {}",
+												 m_currentState.m_signedDistance(originalClosestIndex + 1),
+												 m_currentState.m_signedDistance(originalClosestIndex - m_currentState.m_dims(Z) - 1),
+												 m_currentState.m_signedDistance(originalClosestIndex),
+												 m_currentState.m_signedDistance(originalClosestIndex + m_currentState.m_dims(Z) + 1),
+												 m_currentState.m_signedDistance(originalClosestIndex - (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
+												 m_currentState.m_signedDistance(originalClosestIndex),
+												 m_currentState.m_signedDistance(originalClosestIndex + (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
+												 m_currentState.m_signedDistance(originalClosestIndex - 1));
+						spdlog::info("Signed distance near 'closest cell' = \n \t\t\t {} \n {} \t {} \t {} \t | X = \t {} \t {} \t {} \n \t\t\t {}",
+												 m_currentState.m_signedDistance(closestIndex + 1),
+												 m_currentState.m_signedDistance(closestIndex - m_currentState.m_dims(Z) - 1),
+												 m_currentState.m_signedDistance(closestIndex),
+												 m_currentState.m_signedDistance(closestIndex + m_currentState.m_dims(Z) + 1),
+												 m_currentState.m_signedDistance(closestIndex - (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
+												 m_currentState.m_signedDistance(closestIndex),
+												 m_currentState.m_signedDistance(closestIndex + (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
+												 m_currentState.m_signedDistance(closestIndex - 1));
+						spdlog::info("Velocity at original 'closest cell' = {}, Velocity at 'closest cell' = {}", m_currentState.m_velocity.row(originalClosestIndex), m_currentState.m_velocity.row(closestIndex));*/
 					}
 					// If just one point is outside water volume, take the value of the point that is inside
 					if (closestIndex + offset < m_currentState.getGridMatrixSize(true) && m_currentState.m_signedDistance(closestIndex) > 0)
@@ -254,17 +232,7 @@ namespace FluidSimulation
 			}
 		}
 
-		interpolateX.setZero(); interpolateY.setZero(); interpolateZ.setZero();
-		interpolateX.setFromTriplets(tripletsMid[0].begin(), tripletsMid[0].end());
-		interpolateY.setFromTriplets(tripletsMid[1].begin(), tripletsMid[1].end());
-		interpolateZ.setFromTriplets(tripletsMid[2].begin(), tripletsMid[2].end());
 
-		interpolateX.makeCompressed();
-		interpolateY.makeCompressed();
-		interpolateZ.makeCompressed();
-		velocityMid.col(0) = interpolateX * m_currentState.m_velocity.col(0);
-		velocityMid.col(1) = interpolateY * m_currentState.m_velocity.col(1);
-		velocityMid.col(2) = interpolateZ * m_currentState.m_velocity.col(2);
 
 		interpolateX.setZero(); interpolateY.setZero(); interpolateZ.setZero();
 		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
@@ -281,11 +249,23 @@ namespace FluidSimulation
 		velocityField.col(2) = temp;
 		//velocityMid.setFromTriplets(tripletsMid.begin(), tripletsMid.end(), [](const double& a, const double& b) { return a + b; });
 
+		interpolateX.setZero(); interpolateY.setZero(); interpolateZ.setZero();
+		interpolateX.setFromTriplets(tripletsMid[0].begin(), tripletsMid[0].end());
+		interpolateY.setFromTriplets(tripletsMid[1].begin(), tripletsMid[1].end());
+		interpolateZ.setFromTriplets(tripletsMid[2].begin(), tripletsMid[2].end());
 
-		//spdlog::debug("InterpolateX = \n{}", interpolateX);
-		//spdlog::debug("InterpolateY = \n{}", interpolateY);
-		//spdlog::debug("InterpolateZ = \n{}", interpolateZ);
-		spdlog::info("Extrapolated Velocity Field = \n{}", velocityField);
+		interpolateX.makeCompressed();
+		interpolateY.makeCompressed();
+		interpolateZ.makeCompressed();
+		velocityMid.col(0) = interpolateX * velocityField.col(0);
+		velocityMid.col(1) = interpolateY * velocityField.col(1);
+		velocityMid.col(2) = interpolateZ * velocityField.col(2);
+
+
+		/*spdlog::debug("InterpolateX = \n{}", interpolateX);
+		spdlog::debug("InterpolateY = \n{}", interpolateY);
+		spdlog::debug("InterpolateZ = \n{}", interpolateZ);*/
+		spdlog::debug("Extrapolated Velocity Field = \n{}", velocityField);
 	}
 
 	void EulerSimulation::getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField)
@@ -323,7 +303,7 @@ namespace FluidSimulation
 				bool within2BoundaryOutgoing = (it.row() + 2 * offset >= 0) && (it.row() + 2 * offset < m_currentState.getGridMatrixSize(true));*/
 
 				// If the cell is at an edge, keep velocity at zero per Neumann condition
-				if (withinBoundaryIncoming && within2BoundaryOutgoing)
+				if (withinBoundaryIncoming && (within2BoundaryOutgoing || it.col() == Z))
 				{
 					spdlog::debug("Inserting Interpolation Value {} at ({}, {}) into dimension {}", 1 - std::abs(value), it.row(), it.row(), it.col());
 					triplets[it.col()].emplace_back(it.row(), it.row(), 1 - std::abs(value));
@@ -370,6 +350,7 @@ namespace FluidSimulation
 		velocityField.makeCompressed();
 	}
 
+	
 	void EulerSimulation::advectSignedDistance(double h, const Eigen::SparseMatrix<double, Eigen::ColMajor> oldVelocityMid)
 	{
 		Eigen::SparseMatrix<double> newPositions(m_currentState.getGridMatrixSize(true), 3);
@@ -378,7 +359,8 @@ namespace FluidSimulation
 
 		std::vector<Eigen::Triplet<double>> triplets;
 		
-		spdlog::info("Velocity Midpoints = \n{}", oldVelocityMid);
+		spdlog::debug("Velocity Midpoints = \n{}", oldVelocityMid);		
+
 
 		// Columns
 		for (int k = 0; k < oldVelocityMid.outerSize(); ++k)
@@ -421,11 +403,16 @@ namespace FluidSimulation
 			0, oldVelocityMid.coeff(0 + 5 * 3 + 5 * 3 * 3, 2));*/
 		//spdlog::info("Interpolation Matrix Block = \n{}", interpolateMatrix.block<5, 5>(5 * 3 + 5 * 3 * 3, 5 * 3 + 5 * 3 * 3));
 		//spdlog::info("Signed Distance Block = \n{}", m_currentState.m_signedDistance.segment<5>(5 * 3 + 5 * 3 * 3));
-		spdlog::info("Prior Signed Distance = \n{}", m_currentState.m_signedDistance);
+		spdlog::debug("Prior Signed Distance = \n{}", m_currentState.m_signedDistance);
 		m_currentState.m_signedDistance = (interpolateMatrix * m_currentState.m_signedDistance).eval();
-		spdlog::info("Updated Signed Distance = \n{}", m_currentState.m_signedDistance);
-		m_currentState.m_dSignedDistance = (interpolateMatrix * m_currentState.m_dSignedDistance).eval();
+		spdlog::debug("Updated Signed Distance = \n{}", m_currentState.m_signedDistance);
+		m_currentState.m_dSignedDistance += h * oldVelocityMid;
 		//oldVelocityMid.cwiseQuotient(m_currentState.m_gridSizeHorizontal) * h;
+	}
+
+	void EulerSimulation::recalculateLevelSet()
+	{
+
 	}
 
 	void EulerSimulation::updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::VectorXd& signedDistance)
@@ -480,7 +467,9 @@ namespace FluidSimulation
 
 					if (m_currentState.m_signedDistance(iElement) > 0)
 					{
-						d2p.coeffRef(i, i) = 1;
+						d2p.coeffRef(i, i) = 1.0 / std::pow(m_currentState.m_gridSizeHorizontal(X), 2) + 
+							1.0 / std::pow(m_currentState.m_gridSizeHorizontal(Y), 2) +
+							1.0 / std::pow(m_currentState.m_gridSizeHorizontal(Z), 2);
 						// Make sure this air cell doesn't factor into any other cells
 						// Also make sure this cell is stand-alone so it receives the value of the divergence at that point
 						if (i - 1 >= 0)
@@ -525,7 +514,7 @@ namespace FluidSimulation
 
 		//spdlog::debug("Solving for pressure with the following inputs");
 		//spdlog::debug("velocity = \n{}", velocity);
-		//spdlog::debug("d2p = \n{}", d2p);
+		spdlog::debug("d2p = \n{}", (Eigen::MatrixXd)d2p);
 
 		/* SOLVE */
 		// Solve with modified Cholesky preconditioner
@@ -534,21 +523,23 @@ namespace FluidSimulation
 		//Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<double, Eigen::Lower | Eigen::Upper>> cgSolver;
 		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(d2p);
 		
+		spdlog::debug("velocity = \n{}", (Eigen::MatrixXd)velocity);
 		m_currentState.getQuantityDivergence(dv, velocity);
-		//spdlog::debug("div v = \n{}", dv);
+		spdlog::debug("div v = \n{}", (Eigen::MatrixXd)dv);
 		//solver.compute(d2p);
 		pressure = solver.solve(-dv);
 		//pressure = p.sparseView();
 		m_currentState.m_pressure = pressure;
+		spdlog::debug("pressure = \n{}", (Eigen::MatrixXd)pressure);
 
 		m_currentState.getPressureGradient(dp);
-		//spdlog::info("dp = \n{}", dp);
-		//spdlog::info("midToElement = \n{}", m_currentState.m_midToElement);
+		spdlog::debug("dp = \n{}", (Eigen::MatrixXd)dp);
+		spdlog::debug("change in velocity = \n{}", h / m_density * m_currentState.m_midToElement.transpose() * dp);
 		// Note: The way I have defined velocity, 
 		velocity -= h / m_density * m_currentState.m_midToElement.transpose() * dp;
 		//p = cgSolver.solveWithGuess(-(Eigen::VectorXd)dv, p);
 
-		spdlog::info("Solver info: {} in {} iterations", solver.info() == Eigen::Success ? "Successfully converged" : "Did not successfully converge", "n/a");
+		spdlog::debug("Solver info: {} in {} iterations", solver.info() == Eigen::Success ? "Successfully converged" : "Did not successfully converge", "n/a");
 		//spdlog::info("Solver error: {}", solver)
 
 		spdlog::debug("Results");

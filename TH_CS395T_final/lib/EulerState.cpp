@@ -5,6 +5,8 @@
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "EulerState.h"
+#include "spdlog/fmt/ostr.h" // must be included
+
 
 
 namespace FluidSimulation
@@ -53,7 +55,7 @@ namespace FluidSimulation
 				// index in the midgrid-aligned matrix
 				int iMid = y * (m_dims(Z) + 1) + x * (m_dims(Z) + 1) * (m_dims(Y) + 1);
 
-				spdlog::info("Setting m_midToElement ({}, {}) diagonal block", i, iMid);
+				//spdlog::info("Setting m_midToElement ({}, {}) diagonal block", i, iMid);
 				helper.block(i, iMid, m_dims(Z), m_dims(Z)) = Eigen::MatrixXd::Identity(m_dims(Z), m_dims(Z));
 			}
 		}
@@ -125,7 +127,7 @@ namespace FluidSimulation
 					// If it's a mid-point grid location, the value on both sides are known
 					if (midGrid)
 					{
-						triplets.emplace_back(i, i, -1.0);
+						triplets.emplace_back(i, iMid, -1.0);
 						triplets.emplace_back(i, iMid + spacing, 1.0);
 					}
 					// Within bounds
@@ -265,7 +267,11 @@ namespace FluidSimulation
 		Eigen::SparseMatrix<double> dvDir;
 
 		dv.resize(getGridMatrixSize(false), getGridMatrixSize(false));
+		Eigen::IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
 
+		//spdlog::info("X Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilXMid).format(CleanFmt));
+		//spdlog::info("Y Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilYMid).format(CleanFmt));
+		//spdlog::info("Z Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilZMid).format(CleanFmt));
 		getQuantityGradient(dvDir, true, quantity);
 
 		Eigen::SparseVector<double, Eigen::ColMajor> ones(3, 1);
