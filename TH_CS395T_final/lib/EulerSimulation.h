@@ -32,6 +32,8 @@ namespace FluidSimulation
 		void updatePressure(double h, Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure);
 		void updateVelocityFromPressureGradient(double h, Eigen::SparseMatrix<double> velocity);
 
+		void recalculateLevelSet();
+
 
 		// TODO: Calculate timestep from formula
 		double getTimeStep() { return 0.001; };
@@ -49,6 +51,7 @@ namespace FluidSimulation
 		double m_gravity;
 		bool m_enablePressure;
 		bool m_enableGravity;
+		bool m_recalculateLevelSet;
 
 		friend class EulerSimulationLevelSetTest;
 		friend class EulerSimulationTest_TestConstantAdvection_Test;
