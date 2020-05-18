@@ -6,13 +6,12 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
+#include "FluidScenarios.h"
 
 
 
 namespace FluidVisualizer
 {
-	enum Scenario{Hydrostatic, Sphere, SuspendedColumn, DamBreak};
-
 	class ParticleVisualizer
 	{
 	public:
