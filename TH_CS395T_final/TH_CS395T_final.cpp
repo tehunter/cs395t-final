@@ -10,6 +10,10 @@
 #include <Eigen/Sparse>
 #include "lib/EulerSimulation.h"
 #include "vis/ParticleVisualizer.h"
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/stdout_sinks.h"
+
 
 
 
@@ -21,9 +25,12 @@ using namespace std;
 
 int main()
 {
+	//auto console = spdlog::stdout_logger_mt("console");
+	//spdlog::set_default_logger(console);
+
 	igl::opengl::glfw::Viewer viewer;
 
-	Eigen::Vector3i dimSize(10, 10, 20);
+	Eigen::Vector3i dimSize(1, 1, 6);
 	Eigen::Vector3d gridWidth(0.2, 0.2, 0.2);
 
 	simulation = new FluidSimulation::EulerSimulation(dimSize, gridWidth);

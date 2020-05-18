@@ -11,7 +11,7 @@
 
 namespace FluidVisualizer
 {
-	enum Scenario{Hydrostatic, Sphere};
+	enum Scenario{Hydrostatic, Sphere, SuspendedColumn, DamBreak};
 
 	class ParticleVisualizer
 	{
@@ -39,6 +39,8 @@ namespace FluidVisualizer
 		void pause();
 		void reset();
 		void run();
+		void stepOnce();
+
 
 	protected:
 		Eigen::MatrixXd renderQ;
@@ -51,6 +53,7 @@ namespace FluidVisualizer
 		void killSimThread();
 
 		std::thread* sim_thread;
+		bool please_stepOnce;
 		bool please_pause;
 		bool please_die;
 		bool running;

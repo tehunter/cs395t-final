@@ -5,13 +5,15 @@
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 #include <Eigen/Core>
 #include <thread>
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/basic_file_sink.h"
 
 enum Dimension{X, Y, Z};
 
 namespace FluidVisualizer
 {
 	ParticleVisualizer::ParticleVisualizer(FluidSimulation::EulerSimulation* simulation) : 
-		m_simulation(simulation), sim_thread(NULL), please_pause(false), please_die(false), running(false), m_scenario(Hydrostatic)
+		m_simulation(simulation), sim_thread(NULL), please_pause(false), please_die(false), please_stepOnce(false), running(false), m_scenario(Hydrostatic)
 	{
 		/* FLOOR */
 		if (true)
@@ -47,6 +49,18 @@ namespace FluidVisualizer
 	/*
 	 * Runs the simulation, if it has been paused (or never started).
 	 */
+	void ParticleVisualizer::stepOnce()
+	{
+		if (!m_simulation)
+			return;
+
+		if (!isPaused())
+			return;
+
+		status_mutex.lock();
+		please_stepOnce = true;
+		status_mutex.unlock();
+	}
 	void ParticleVisualizer::run()
 	{
 		status_mutex.lock();
@@ -72,6 +86,8 @@ namespace FluidVisualizer
 	void ParticleVisualizer::initSimulation()
 	{
 		int nverts = 5, nfaces = 4;
+
+		m_simulation->updateState()->m_velocity.setZero();
 
 		/* WALLS */
 		if (true)
@@ -102,7 +118,7 @@ namespace FluidVisualizer
 		Eigen::Vector3d sphereCenter;
 		sphereCenter = m_simulation->getState()->m_gridSizeHorizontal.cwiseProduct(m_simulation->getState()->m_dims.cast<double>()) / 2.0;
 		double radius = sphereCenter(0) / 3.0;
-		for (int x = 0; x < m_simulation->getState()->m_dims(1) + 1; x++)
+		for (int x = 0; x < m_simulation->getState()->m_dims(X) + 1; x++)
 		{
 			for (int y = 0; y < m_simulation->getState()->m_dims(Y) + 1; y++)
 			{
@@ -126,6 +142,70 @@ namespace FluidVisualizer
 							distance = (direction).norm() - radius;
 						else
 							distance = -radius;
+						break;
+					case SuspendedColumn:
+						if (x == m_simulation->getState()->m_dims(X))
+						{
+							direction = Eigen::Vector3d(0.5 * m_simulation->getState()->m_gridSizeHorizontal(X), 0, std::max(sphereCenter(2), position(2)));
+							distance = direction.norm();
+							direction.normalize();
+						}
+						else if (y == m_simulation->getState()->m_dims(X))
+						{
+							direction = Eigen::Vector3d(0, 0.5 * m_simulation->getState()->m_gridSizeHorizontal(Y), std::max(sphereCenter(2), position(2)));
+							distance = direction.norm();
+							direction.normalize();
+						}
+						else if (z == m_simulation->getState()->m_dims(Z))
+						{
+							direction = direction = Eigen::Vector3d(0, 0, 1.0);
+							distance = position(2) - m_simulation->getState()->m_dims(Z) * m_simulation->getState()->m_gridSizeHorizontal(Z);
+						}
+						else
+						{
+							bool closerToTop = (position(2) - sphereCenter(2)) >= m_simulation->getState()->m_dims(Z) * m_simulation->getState()->m_gridSizeHorizontal(Z) / 4.0;
+							direction = direction = Eigen::Vector3d(0, 0, closerToTop ? 1.0 : -1.0);
+							if (closerToTop)
+								distance = position(2) - m_simulation->getState()->m_dims(Z) * m_simulation->getState()->m_gridSizeHorizontal(Z);
+							else
+								distance = sphereCenter(2) - position(2);
+						}
+						break;
+
+					case DamBreak:
+						if (y == m_simulation->getState()->m_dims(Y))
+						{
+							direction = Eigen::Vector3d(std::max(position(0) - sphereCenter(0), 0.0), 0.5 * m_simulation->getState()->m_gridSizeHorizontal(Y), 0);
+							distance = direction.norm();
+							direction.normalize();
+						}
+						else if (z == m_simulation->getState()->m_dims(Z))
+						{
+							direction = Eigen::Vector3d(std::max(position(0) - sphereCenter(0), 0.0), 0, 0.5 * m_simulation->getState()->m_gridSizeHorizontal(Z));
+							distance = direction.norm();
+							direction.normalize();
+						}
+						else if (x < (m_simulation->getState()->m_dims(X) / 2))
+						{
+							bool closerToTop = (m_simulation->getState()->m_dims(Z) * m_simulation->getState()->m_gridSizeHorizontal(Z) - (position(2))) < (m_simulation->getState()->m_dims(X) * m_simulation->getState()->m_gridSizeHorizontal(X) / 2.0 - (position(0)));
+							if (closerToTop)
+							{
+								direction = Eigen::Vector3d(0, 0, 1.0);
+								distance = -(m_simulation->getState()->m_dims(Z) * m_simulation->getState()->m_gridSizeHorizontal(Z) - (position(2)));
+							}
+							else
+							{
+								direction = Eigen::Vector3d(1.0, 0, 0);
+								distance = position(0) - sphereCenter(0);
+							}
+							direction.normalize();
+						}
+						else
+						{
+							direction = Eigen::Vector3d(1.0, 0, 0);
+							distance = position(0) - sphereCenter(0);
+							spdlog::debug("({}, {}, {}) Position = {}, Center = {}", x, y, z, position, sphereCenter);
+						}
 						break;
 					}
 
@@ -197,7 +277,7 @@ namespace FluidVisualizer
 		int idx = 0;
 		double eps = 1e-4;
 
-		int gridCells = m_simulation->getState()->getGridMatrixSize(false);
+		int gridCells = m_simulation->getState()->getGridMatrixSize(true);
 
 
 		for (int i = 0; i < gridCells; i++)
@@ -319,6 +399,10 @@ namespace FluidVisualizer
 	{
 		if (ImGui::CollapsingHeader("Simulation Control", ImGuiTreeNodeFlags_DefaultOpen))
 		{
+			if (ImGui::Button("Step Once", ImVec2(-1, 0)))
+			{
+				stepOnce();
+			}
 			if (ImGui::Button("Run/Pause Sim", ImVec2(-1, 0)))
 			{
 				toggleSimulation();
@@ -330,13 +414,46 @@ namespace FluidVisualizer
 		}
 		if (ImGui::CollapsingHeader("Simulation Scenario", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			std::string strings[2] = { "Hydrostatic Volume", "Falling Sphere" };
-			for (int i = 0; i < 2; i++)
+			std::string strings[4] = { "Hydrostatic Volume", "Falling Sphere", "Suspended Column", "Dam Break"};
+			for (int i = 0; i < 4; i++)
 			{
 				if (ImGui::RadioButton(strings[i].c_str(), m_scenario == i))
 				{
 					m_scenario = (Scenario)i;
 				}
+			}
+		}
+		if (ImGui::CollapsingHeader("Simulation Settings", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			bool gravity = true;
+			bool pressure = true;
+			if (ImGui::Checkbox("Gravity", &gravity))
+			{
+				if (m_simulation && gravity == m_simulation->getGravityEnabled())
+				{
+					m_simulation->toggleGravity();
+				}
+				gravity = !gravity;
+			}
+			if (ImGui::Checkbox("Pressure", &pressure))
+			{
+				if (m_simulation && pressure == m_simulation->getPressureEnabled())
+				{
+					m_simulation->togglePressure();
+				}
+				pressure = !pressure;
+			}
+		}
+		if (ImGui::CollapsingHeader("Miscellaneous", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			bool logDebug = spdlog::default_logger()->level() == spdlog::level::debug;
+			if (ImGui::Checkbox("Log Level = Debug", &logDebug))
+			{
+				//logDebug = !logDebug;
+				if (logDebug)
+					spdlog::set_level(spdlog::level::debug);
+				else
+					spdlog::set_level(spdlog::level::info);
 			}
 		}
 		//m_simulation->drawGUI(menu);
@@ -356,9 +473,18 @@ namespace FluidVisualizer
 
 			status_mutex.lock();
 			bool pausenow = please_pause;
+			bool steponce = please_stepOnce;
 			status_mutex.unlock();
-			if (pausenow)
+			if (pausenow && !please_stepOnce)
 			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			}
+			else if (please_stepOnce)
+			{
+				m_simulation->step(0.01);
+				status_mutex.lock();
+				please_stepOnce = false;
+				status_mutex.unlock();
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			}
 			else
