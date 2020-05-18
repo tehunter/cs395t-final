@@ -19,15 +19,21 @@ namespace FluidSimulation
 		{
 			m_enableGravity = true;
 			m_enablePressure = true;
+			m_recalculateLevelSet = false;
+			m_cutoffDistance = 4.0;
 		};
 		void step(double h);
 		EulerState const* getState() { return &m_currentState; };
 		EulerState* updateState() { return &m_currentState; };
 
+		bool getRecalculateLevelSet() { return m_recalculateLevelSet; };
 		bool getGravityEnabled() { return m_enableGravity; };
 		bool getPressureEnabled() { return m_enablePressure; };
 		void toggleGravity() { m_enableGravity = !m_enableGravity; };
 		void togglePressure() { m_enablePressure = !m_enablePressure; };
+		void toggleRecalculateLevelSet() { m_recalculateLevelSet = !m_recalculateLevelSet; };
+
+		double m_cutoffDistance;
 	private:
 		void getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField, Eigen::SparseMatrix<double, Eigen::ColMajor>& velocityMid);
 		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField);

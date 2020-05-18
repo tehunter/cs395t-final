@@ -30,8 +30,8 @@ int main()
 
 	igl::opengl::glfw::Viewer viewer;
 
-	Eigen::Vector3i dimSize(1, 1, 6);
-	Eigen::Vector3d gridWidth(0.2, 0.2, 0.2);
+	Eigen::Vector3i dimSize(10, 4, 6);
+	Eigen::Vector3d gridWidth(0.5, 0.5, 0.5);
 
 	simulation = new FluidSimulation::EulerSimulation(dimSize, gridWidth);
 	visualizer = new FluidVisualizer::ParticleVisualizer(simulation);

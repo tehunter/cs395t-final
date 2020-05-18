@@ -1,5 +1,7 @@
 #include <vector>
 #include <cmath>
+#include <cfloat>
+#include <queue>
 #include <Eigen/Core>
 #include <Eigen/Sparse>
 //#include <Eigen/IterativeLinearSolvers>
@@ -8,6 +10,7 @@
 #include "EulerState.h"
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/basic_file_sink.h"
+
 
 namespace FluidSimulation
 {
@@ -65,7 +68,7 @@ namespace FluidSimulation
 			// Check for grid positions that are within 3 grids of the edge
 			//bool withinRange = m_currentState.m_signedDistance(i,0) < 5.0 * m_currentState.m_gridSizeHorizontal.maxCoeff();
 			Eigen::Vector3d pos = m_currentState.m_positionsMid.row(i);
-			bool withinRange = true;
+			bool withinRange = m_currentState.m_signedDistance(i) <= m_cutoffDistance * m_currentState.m_gridSizeHorizontal.minCoeff();
 			if (withinRange && m_currentState.m_signedDistance(i) > 0)
 			{
 
@@ -329,9 +332,9 @@ namespace FluidSimulation
 		triplets[2].clear();
 
 		// OK to skip if velocity is 0
-		for (int k = 0; k < velocityField.outerSize(); ++k)
+		for (int k = 0; k < m_currentState.m_velocity.outerSize(); ++k)
 		{
-			for (Eigen::SparseMatrix<double>::InnerIterator it(velocityField, k); it; ++it)
+			for (Eigen::SparseMatrix<double>::InnerIterator it(m_currentState.m_velocity, k); it; ++it)
 			{
 				int row = it.row();
 				double value = it.value() * h / m_currentState.m_gridSizeHorizontal(it.col());
@@ -404,9 +407,11 @@ namespace FluidSimulation
 	
 	void EulerSimulation::advectSignedDistance(double h, const Eigen::SparseMatrix<double, Eigen::ColMajor> oldVelocityMid)
 	{
-		Eigen::SparseMatrix<double> newPositions(m_currentState.getGridMatrixSize(true), 3);
-		Eigen::MatrixXd interpolateMatrix(m_currentState.getGridMatrixSize(true), m_currentState.getGridMatrixSize(true));
-		interpolateMatrix.setIdentity();
+		//Eigen::SparseMatrix<double> newPositions(m_currentState.getGridMatrixSize(true), 3);
+		Eigen::MatrixXd interpolateMatrix = Eigen::MatrixXd::Identity(m_currentState.getGridMatrixSize(true), m_currentState.getGridMatrixSize(true));
+		//Eigen::SparseMatrix<double, Eigen::RowMajor> interpolateMatrixSparse(m_currentState.getGridMatrixSize(true), m_currentState.getGridMatrixSize(true));
+		//interpolateMatrix.setIdentity();
+		//interpolateMatrixSparse.setIdentity();
 
 		std::vector<Eigen::Triplet<double>> triplets;
 		
@@ -421,6 +426,9 @@ namespace FluidSimulation
 				int direction = (value < 0) ? 1 : -1;
 				int offset = (it.col() == Z) * 1 + (it.col() == Y) * (m_currentState.m_dims(Z) + 1) + (it.col() == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
 				int blockSize = (it.col() == Z) * 1 + (it.col() == Y) * 2 + (it.col() == X) * (m_currentState.m_dims(Z) + 1);
+				int dimIndex = (it.col() == 2) * (it.row() % (m_currentState.m_dims(2) + 1)) +
+					(it.col() == 1) * ((it.row() / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
+					(it.col() == 0) * (it.row() / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
 
 				//spdlog::info("Row = {}; Col = {}; Offset = {}; Block Size = {}", it.row(), it.col(), offset, blockSize);
 
@@ -434,16 +442,34 @@ namespace FluidSimulation
 						it.row() + direction * offset < m_currentState.getGridMatrixSize(true) &&
 						it.row() + direction * offset + blockSize < m_currentState.getGridMatrixSize(true) &&
 						it.row() + blockSize < m_currentState.getGridMatrixSize(true))
-					{
+					{						
 						interpolateMatrix.block(it.row(), it.row() + direction * offset, 1, blockSize) = (interpolateMatrix.block(it.row(), it.row(), 1, blockSize) * std::abs(value)).eval();
+						/*for (Eigen::SparseMatrix<double, Eigen::RowMajor>::InnerIterator interpIter(interpolateMatrixSparse, it.row()); interpIter; ++interpIter)
+						{
+							spdlog::info("interpIndex = {}; itRow = {}, blockSize = {}", interpIter.index(), it.row(), blockSize);
+							if (interpIter.index() - it.row() < blockSize && interpIter.index() - it.row() >= 0)
+								interpolateMatrixSparse.coeffRef(it.row(), direction * offset + interpIter.index()) = interpIter.value() * std::abs(value);
+						}*/
+					
 					}
 
-
+					//interpolateMatrixSparse.row(it.row()) *= (1.0 - std::abs(value));
 					interpolateMatrix.block(it.row(), it.row(), 1, blockSize) = (interpolateMatrix.block(it.row(), it.row(), 1, blockSize) * (1.0 - std::abs(value))).eval();
+					// If we're at a wall, and going into that wall, then copy over the signed distance to the wall
+					if ((dimIndex == (m_currentState.m_dims(it.col()) - 1)) && direction == -1)
+					{
+						//interpolateMatrix.row(it.row() + offset) = interpolateMatrix.row(it.row());
+					}
 					//(it.row(), it.row()) -= std::abs(value);
 				}
 			}
 		}
+
+		/*if (interpolateMatrix.isApprox(Eigen::MatrixXd(interpolateMatrixSparse)))
+			spdlog::info("Dense and Sparse interpolation matrices are roughly equal");
+		else
+			spdlog::warn("Dense and Sparse interpolation matrices are roughly NOT equal");*/
+
 
 		//spdlog::info("Signed Distance Advection: Interpolate Matrix = \n{}", interpolateMatrix);
 		/*spdlog::debug("Old Velocity Mid ({} -> {}, {} -> {}, {} -> {}, {} -> {})", 
@@ -463,7 +489,179 @@ namespace FluidSimulation
 
 	void EulerSimulation::recalculateLevelSet()
 	{
+		// Find the the surface cells
+		std::priority_queue<size_t> q;
+		std::unordered_map<size_t, Eigen::Vector3d> knownLocations;
 
+		Eigen::MatrixXd nearSurface = (m_currentState.m_signedDistance.cwiseAbs().array() < (2 * m_currentState.m_gridSizeHorizontal.minCoeff())).cast<double>();
+
+		spdlog::debug("Near Surface = \n{}", nearSurface);
+
+		// Sparsify
+
+
+		// Loop over surface indices
+		for (int i = 0; i < m_currentState.getGridMatrixSize(true); i++)
+		{
+			int z = (i % (m_currentState.m_dims(2) + 1));
+			int y = ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1));
+			int x = (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
+
+			if (nearSurface(i))
+			{
+				if (m_currentState.m_signedDistance(i) == 0)
+				{
+					knownLocations.insert({ i, Eigen::Vector3d::Zero() });
+					continue;
+				}
+
+				// calculate signed distance from interpolation in all directions
+				double closestDistance = DBL_MAX;
+				Eigen::Vector3d closestPoint;
+				for (int dim = 0; dim < 3; dim++)
+				{
+					int dimIndex = (dim == 2) * (i % (m_currentState.m_dims(2) + 1)) +
+						(dim == 1) * ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
+						(dim == 0) * (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
+
+					int offset = (dim == 2) * 1 + (dim == 1) * (m_currentState.m_dims(2) + 1) + (dim == 0) * (m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1);
+
+					for (int dir = -1; dir < 2; dir += 2)
+					{
+						// TODO: I think the second part is redundent
+						if (dimIndex + dir >= 0 && dimIndex + dir < m_currentState.m_dims(dim) &&
+								i + dir * offset >= 0 && i + dir * offset < m_currentState.getGridMatrixSize(true))
+						{
+							// Check if the signed distance is opposite. If yes, then the surface is in between
+							if ((m_currentState.m_signedDistance(i) > 0) != (m_currentState.m_signedDistance(i + dir * offset) > 0))
+							{
+								double weight = m_currentState.m_signedDistance(i) / (m_currentState.m_signedDistance(i) - m_currentState.m_signedDistance(i + dir * offset));
+								double distance = (weight * m_currentState.m_gridSizeHorizontal(dim));
+								if (distance < closestDistance)
+								{
+									closestDistance = distance;
+									// Calculate vector to surface point
+									//closestPoint = Eigen::Vector3d(x + 0.5, y + 0.5, z + 0.5);
+									closestPoint = Eigen::Vector3d::Zero();
+									closestPoint(dim) += weight * dir;
+								}
+							}
+						}
+					} // end dir
+				} // end dim
+
+				if (closestDistance < DBL_MAX)
+				{
+					closestPoint = closestPoint.cwiseProduct(m_currentState.m_gridSizeHorizontal);
+
+					knownLocations.insert({ i, closestPoint });
+				}
+			}
+		}
+
+		for (std::unordered_map<size_t, Eigen::Vector3d>::const_iterator it = knownLocations.begin(); it != knownLocations.end(); ++it)
+		{
+			size_t idx = it->first;
+			Eigen::Vector3d vec = it->second;
+
+			spdlog::debug("Known Location ({}) = {}", (int)idx, vec.transpose());
+		}
+
+		int iters = 0;
+		while (knownLocations.size() < m_currentState.getGridMatrixSize(true) && iters < 10)
+		{
+			spdlog::debug("Searching for closest points of unknown points, iteration = {}", iters);
+			// Loop over all unknown grid points p
+			for (int i = 0; i < m_currentState.getGridMatrixSize(true); i++)
+			{
+				if (knownLocations.count(i) > 0)
+					continue;
+
+				int z = (i % (m_currentState.m_dims(2) + 1));
+				int y = ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1));
+				int x = (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
+				
+				// For each neighbor q
+				double closestDistance = DBL_MAX;
+				Eigen::Vector3d closestPoint;
+				for (int dim = 0; dim < 3; dim++)
+				{
+					int dimIndex = (dim == 2) * (i % (m_currentState.m_dims(2) + 1)) +
+						(dim == 1) * ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
+						(dim == 0) * (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
+
+					int offset = (dim == 2) * 1 + (dim == 1) * (m_currentState.m_dims(2) + 1) + (dim == 0) * (m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1);
+
+					for (int dir = -1; dir < 2; dir += 2)
+					{
+						// TODO: I think the second part is redundent
+						if (dimIndex + dir >= 0 && dimIndex + dir < m_currentState.m_dims(dim) + 1 &&
+								i + dir * offset >= 0 && i + dir * offset < m_currentState.getGridMatrixSize(true))
+						{
+							if (knownLocations.count(i + dir * offset) > 0)
+							{
+								// If known, calculate the vector from p to q's surface point
+								Eigen::Vector3d surfacePoint = knownLocations.at(i + dir * offset);
+								surfacePoint(dim) += (dir * m_currentState.m_gridSizeHorizontal(dim));
+
+								// If smaller, than add q back to the unknown list
+								if (surfacePoint.norm() < knownLocations.at(i + dir * offset).norm())
+								{
+									knownLocations.erase(i + dir * offset);
+								}
+								// Update closest point
+								if (surfacePoint.norm() < closestDistance)
+								{
+									closestDistance = surfacePoint.norm();
+									closestPoint = surfacePoint;
+								}
+							}
+
+						}
+					} // end dir
+				} // end dim
+
+				// Set p's known value to the closest surface point
+				if (closestDistance < DBL_MAX)
+				{
+					knownLocations.insert({ i, closestPoint });
+				}
+			}
+			iters++;
+		} // end while
+
+		for (std::unordered_map<size_t, Eigen::Vector3d>::const_iterator it = knownLocations.begin(); it != knownLocations.end(); ++it)
+		{
+			size_t idx = it->first;
+			Eigen::Vector3d vec = it->second;
+
+			spdlog::debug("Final Known Location ({}) = {}", (int)idx, vec.transpose());
+			bool inside = m_currentState.m_signedDistance(idx) < 0;
+			m_currentState.m_signedDistance.coeffRef(idx) = (inside ? -1 : 1) * vec.norm();
+			Eigen::Vector3d normalized = (inside ? 1 : -1) * vec.normalized();
+			m_currentState.m_dSignedDistance.coeffRef(idx, 0) = normalized(0);
+			m_currentState.m_dSignedDistance.coeffRef(idx, 1) = normalized(1);
+			m_currentState.m_dSignedDistance.coeffRef(idx, 2) = normalized(2);
+
+		}
+
+				// For each neighbor q
+						// If known, calculate the vector from p to q's surface point
+						// If smaller, than add q back to the unknown list
+				// Set p's known value to the closest surface point
+
+
+
+
+		/*for (Eigen::SparseVector<int>::InnerIterator it(m_currentState.m_isFluid); it; ++it)
+		{
+			// 2 == SURFACE
+			if (it.value() == 2)
+			{
+				//it.row();
+				
+			}
+		}*/
 	}
 
 	void EulerSimulation::updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::VectorXd& signedDistance)
@@ -523,32 +721,32 @@ namespace FluidSimulation
 							1.0 / std::pow(m_currentState.m_gridSizeHorizontal(Z), 2);
 						// Make sure this air cell doesn't factor into any other cells
 						// Also make sure this cell is stand-alone so it receives the value of the divergence at that point
-						if (i - 1 >= 0)
+						if (z - 1 >= 0)
 						{
 							d2p.coeffRef(i - 1, i) = 0;
 							d2p.coeffRef(i, i - 1) = 0;
 						}
-						if (i - m_currentState.m_dims(Z) >= 0)
+						if (y - 1 >= 0)
 						{
 							d2p.coeffRef(i - m_currentState.m_dims(Z), i) = 0;
 							d2p.coeffRef(i, i - m_currentState.m_dims(Z)) = 0;
 						}
-						if (i - m_currentState.m_dims(Z) * m_currentState.m_dims(Y) >= 0)
+						if (x - 1 >= 0)
 						{
 							d2p.coeffRef(i - m_currentState.m_dims(Z) * m_currentState.m_dims(Y), i) = 0;
 							d2p.coeffRef(i, i - m_currentState.m_dims(Z) * m_currentState.m_dims(Y)) = 0;
 						}
-						if (i + 1 < m_currentState.getGridMatrixSize(false))
+						if (z + 1 < m_currentState.m_dims(Z))
 						{
 							d2p.coeffRef(i + 1, i) = 0;
 							d2p.coeffRef(i, i + 1) = 0;
 						}
-						if (i + m_currentState.m_dims(Z) < m_currentState.getGridMatrixSize(false))
+						if (y + 1 < m_currentState.m_dims(Y))
 						{
 							d2p.coeffRef(i + m_currentState.m_dims(Z), i) = 0;
 							d2p.coeffRef(i, i + m_currentState.m_dims(Z)) = 0;
 						}
-						if (i + m_currentState.m_dims(Z) * m_currentState.m_dims(Y) < m_currentState.getGridMatrixSize(false))
+						if (x + 1 < m_currentState.m_dims(X))
 						{
 							d2p.coeffRef(i + m_currentState.m_dims(Z) * m_currentState.m_dims(Y), i) = 0;
 							d2p.coeffRef(i, i + m_currentState.m_dims(Z) * m_currentState.m_dims(Y)) = 0;

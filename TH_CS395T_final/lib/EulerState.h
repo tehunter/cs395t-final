@@ -15,6 +15,7 @@ namespace FluidSimulation
 		/* DATA MEMBERS */
 		Eigen::VectorXd m_signedDistance;
 		Eigen::MatrixX3d m_dSignedDistance;
+		Eigen::SparseVector<int> m_isFluid;
 		Eigen::SparseMatrix<double> m_velocity;
 		Eigen::SparseVector<double> m_pressure;
 

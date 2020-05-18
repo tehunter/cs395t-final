@@ -144,7 +144,7 @@ namespace FluidVisualizer
 							distance = -radius;
 						break;
 					case SuspendedColumn:
-						if (x == m_simulation->getState()->m_dims(X))
+						/*if (x == m_simulation->getState()->m_dims(X))
 						{
 							direction = Eigen::Vector3d(0.5 * m_simulation->getState()->m_gridSizeHorizontal(X), 0, std::max(sphereCenter(2), position(2)));
 							distance = direction.norm();
@@ -156,7 +156,8 @@ namespace FluidVisualizer
 							distance = direction.norm();
 							direction.normalize();
 						}
-						else if (z == m_simulation->getState()->m_dims(Z))
+						else */
+						if (z == m_simulation->getState()->m_dims(Z))
 						{
 							direction = direction = Eigen::Vector3d(0, 0, 1.0);
 							distance = position(2) - m_simulation->getState()->m_dims(Z) * m_simulation->getState()->m_gridSizeHorizontal(Z);
@@ -279,21 +280,89 @@ namespace FluidVisualizer
 
 		int gridCells = m_simulation->getState()->getGridMatrixSize(true);
 
+		Eigen::Vector3d offsets[8];
+		offsets[0] << 0.25, 0.25, 0.25;
+		offsets[1] << 0.25, 0.25, -0.25;
+		offsets[2] << 0.25, -0.25, 0.25;
+		offsets[3] << -0.25, 0.25, 0.25;
+		offsets[4] << 0.25, -0.25, -0.25;
+		offsets[5] << -0.25, -0.25, 0.25;
+		offsets[6] << -0.25, 0.25, -0.25;
+		offsets[7] << -0.25, -0.25, -0.25;
+
+		bool refinedParticles = false;
 
 		for (int i = 0; i < gridCells; i++)
 		{
 			Eigen::Vector3d color(0, 0, 1.0);
+			
+			if (i > (m_simulation->getState()->getGridMatrixSize(true) - 1 - m_simulation->getState()->m_dims(2)))
+				continue;
+
+			int z = (i % (m_simulation->getState()->m_dims(2) + 1));
+			int y = ((i / (m_simulation->getState()->m_dims(2) + 1)) % (m_simulation->getState()->m_dims(1) + 1));
+			int x = (i / ((m_simulation->getState()->m_dims(2) + 1) * (m_simulation->getState()->m_dims(1) + 1)));
+
+			if (z == m_simulation->getState()->m_dims(Z) || y == m_simulation->getState()->m_dims(Y) || x == m_simulation->getState()->m_dims(X))
+				continue;
+
 
 			for (int scatterBalls = 0; scatterBalls < 1; scatterBalls++)
 			{
 
-
+				
 				Eigen::Vector3d pos = m_simulation->getState()->getLocalCoordinatesOfElement(i, true);
-				if (m_simulation->getState()->m_signedDistance(i) <= 0)
+				if (refinedParticles)
 				{
-					//pos += Eigen::Vector3d::Random() * m_simulation->getState()->m_gridSizeHorizontal.minCoeff() / 10.0;
-					points.push_back(Eigen::Vector3d(pos[0], pos[1], pos[2]));
-					colors.push_back(Eigen::Vector3d(0.8, 0.0, 0.0) * std::min(m_simulation->getState()->m_velocity.row(i).norm() / 3.0, 1.0) + Eigen::Vector3d(0.2, 0.2, 0.2));
+					for (int j = 0; j < 8; j++)
+					{
+						Eigen::Vector3d point = pos + offsets[j].cwiseProduct(m_simulation->getState()->m_gridSizeHorizontal);
+
+						double interpZ, interpZ_Y, interpZ_X, interpZ_XY;
+						interpZ = interpZ_Y = interpZ_X = interpZ_XY = m_simulation->getState()->m_signedDistance(i);
+
+						if ((i + (offsets[j](2) > 0 ? 1 : -1)) < gridCells && (i + (offsets[j](2) > 0 ? 1 : -1)) >= 0)
+							interpZ = m_simulation->getState()->m_signedDistance(i) * 0.75 + m_simulation->getState()->m_signedDistance(i + (offsets[j](2) > 0 ? 1 : -1)) * 0.25;
+
+						if ((i + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1)) < gridCells &&
+								((i + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1))) >= 0 &&
+								(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1)) < gridCells &&
+								(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1)) >= 0)
+							interpZ_Y = m_simulation->getState()->m_signedDistance(i + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1)) * 0.75 + m_simulation->getState()->m_signedDistance(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1)) * 0.25;
+
+						if ((i + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) < gridCells &&
+								(i + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) >= 0 &&
+								(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) < gridCells &&
+								(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) >= 0)
+							interpZ_X = m_simulation->getState()->m_signedDistance(i + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) * 0.75 + m_simulation->getState()->m_signedDistance(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) * 0.25;
+
+						if ((i + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) < gridCells &&
+								(i + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) >= 0 &&
+								(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) < gridCells &&
+								(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) >= 0)
+							interpZ_XY = m_simulation->getState()->m_signedDistance(i + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) + (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) * 0.75 + m_simulation->getState()->m_signedDistance(i + (offsets[j](2) > 0 ? 1 : -1) + (offsets[j](1) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (offsets[j](0) > 0 ? 1 : -1) * (m_simulation->getState()->m_dims(Z) + 1) * (m_simulation->getState()->m_dims(Y) + 1)) * 0.25;
+
+						double Y0 = interpZ * 0.75 + interpZ_Y * 0.25;
+						double Y1 = interpZ_X * 0.75 + interpZ_XY * 0.25;
+
+						double dist = Y0 * 0.75 + Y1 * 0.25;
+
+						if (dist <= 0)
+						{
+							//pos += Eigen::Vector3d::Random() * m_simulation->getState()->m_gridSizeHorizontal.minCoeff() / 10.0;
+							points.push_back(point);
+							colors.push_back(Eigen::Vector3d(0.8, 0.0, 0.0) * std::min(m_simulation->getState()->m_velocity.row(i).norm() / 3.0, 1.0) + Eigen::Vector3d(0.2, 0.2, 0.2));
+						}
+					}
+				}
+				else
+				{
+					if (m_simulation->getState()->m_signedDistance(i) <= 0)
+					{
+						//pos += Eigen::Vector3d::Random() * m_simulation->getState()->m_gridSizeHorizontal.minCoeff() / 10.0;
+						points.push_back(pos);
+						colors.push_back(Eigen::Vector3d(0.8, 0.0, 0.0) * std::min(m_simulation->getState()->m_velocity.row(i).norm() / 3.0, 1.0) + Eigen::Vector3d(0.2, 0.2, 0.2));
+					}
 				}
 
 				const double PI = 3.1415926535898;
@@ -425,23 +494,43 @@ namespace FluidVisualizer
 		}
 		if (ImGui::CollapsingHeader("Simulation Settings", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			bool gravity = true;
-			bool pressure = true;
+			bool gravity = true, pressure = true, recalcLevelSet = false;
+			double cutoff = 3;
+			if (m_simulation)
+			{
+				gravity = m_simulation->getGravityEnabled();
+				pressure = m_simulation->getPressureEnabled();
+				recalcLevelSet = m_simulation->getRecalculateLevelSet();
+				cutoff = m_simulation->m_cutoffDistance;
+			}
+			if (ImGui::InputDouble("Cutoff Distance", &cutoff, 0.5, 0.5, "%.2f"))
+			{
+				m_simulation->m_cutoffDistance = cutoff;
+			}
+
 			if (ImGui::Checkbox("Gravity", &gravity))
 			{
-				if (m_simulation && gravity == m_simulation->getGravityEnabled())
+				if (m_simulation && gravity != m_simulation->getGravityEnabled())
 				{
 					m_simulation->toggleGravity();
 				}
-				gravity = !gravity;
+				//gravity = !gravity;
 			}
 			if (ImGui::Checkbox("Pressure", &pressure))
 			{
-				if (m_simulation && pressure == m_simulation->getPressureEnabled())
+				if (m_simulation && pressure != m_simulation->getPressureEnabled())
 				{
 					m_simulation->togglePressure();
 				}
-				pressure = !pressure;
+				//pressure = !pressure;
+			}
+			if (ImGui::Checkbox("Recalculate Level Set", &recalcLevelSet))
+			{
+				if (m_simulation && recalcLevelSet != m_simulation->getRecalculateLevelSet())
+				{
+					m_simulation->toggleRecalculateLevelSet();
+				}
+				//recalcLevelSet = !recalcLevelSet;
 			}
 		}
 		if (ImGui::CollapsingHeader("Miscellaneous", ImGuiTreeNodeFlags_DefaultOpen))
