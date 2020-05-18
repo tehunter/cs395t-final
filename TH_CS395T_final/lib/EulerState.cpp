@@ -184,6 +184,12 @@ namespace FluidSimulation
 								triplets.emplace_back(i, i, 1 / (m_gridSizeHorizontal(dim) * m_gridSizeHorizontal(dim)));
 								triplets.emplace_back(i, i + dir * spacing[dim], -1 / (m_gridSizeHorizontal(dim) * m_gridSizeHorizontal(dim)));
 							}
+							else if (dim == Z && dir == 1)
+							{
+								// Treat the top boundary as air
+								// TODO: Is this okay?
+								triplets.emplace_back(i, i, 1 / (m_gridSizeHorizontal(dim) * m_gridSizeHorizontal(dim)));
+							}
 						}
 					}
 				}

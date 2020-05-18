@@ -136,6 +136,51 @@ namespace FluidSimulation
 						spdlog::critical("Closest within-volume index is outside of the grid domain:");
 						spdlog::debug("Position of unknown cell = {}", m_currentState.m_positionsMid.row(i));
 						spdlog::debug("Distance to water volume = {} in direction {}", m_currentState.m_signedDistance(i), m_currentState.m_dSignedDistance.row(i).format(LongFmt));
+						
+						try
+						{
+							if (originalClosestIndex >= m_currentState.getGridMatrixSize(true))
+							{
+								spdlog::warn("originalClosestIndex too large ({}), resetting to zero", originalClosestIndex);
+								originalClosestIndex = 0;
+							}
+
+							if (closestIndex >= m_currentState.getGridMatrixSize(true))
+							{
+								spdlog::warn("closestIndex too large ({}), resetting to zero", closestIndex);
+								closestIndex = 0;
+							}
+
+							size_t gridSize = m_currentState.getGridMatrixSize(true) - 1;
+							spdlog::debug("Index of unknown cell = {}; Index of original 'closest' cell = {}; Index of 'closest' cell = {}", i, originalClosestIndex, closestIndex);
+							spdlog::debug("Distance of unknown cell from surface = {}; distance of original 'closest' cell to surface = {}; distance of 'closest' cell to surface = {}", m_currentState.m_signedDistance(i), m_currentState.m_signedDistance(originalClosestIndex), m_currentState.m_signedDistance(closestIndex));
+							spdlog::debug("Gradient of signed distance = {}", m_currentState.m_dSignedDistance.row(i).format(LongFmt));
+							/*spdlog::info("Signed distance near original 'closest cell' = \n \t\t\t {} \n {} \t {} \t {} \t | X = \t {} \t {} \t {} \n \t\t\t {}",
+													 m_currentState.m_signedDistance(std::min(gridSize, originalClosestIndex + 1)),
+													 m_currentState.m_signedDistance(std::max((size_t)0, originalClosestIndex - m_currentState.m_dims(Z) - 1)),
+													 m_currentState.m_signedDistance(originalClosestIndex),
+													 m_currentState.m_signedDistance(std::min(gridSize, originalClosestIndex + m_currentState.m_dims(Z) + 1)),
+													 m_currentState.m_signedDistance(std::max((size_t)0, originalClosestIndex - (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1))),
+													 m_currentState.m_signedDistance(originalClosestIndex),
+													 m_currentState.m_signedDistance(std::min(gridSize, originalClosestIndex + (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1))),
+													 m_currentState.m_signedDistance(std::max((size_t)0, originalClosestIndex - 1)));
+							spdlog::info("Signed distance near 'closest cell' = \n \t\t\t {} \n {} \t {} \t {} \t | X = \t {} \t {} \t {} \n \t\t\t {}",
+													 m_currentState.m_signedDistance(std::min(gridSize, closestIndex + 1)),
+													 m_currentState.m_signedDistance(std::max((size_t)0, closestIndex - m_currentState.m_dims(Z) - 1)),
+													 m_currentState.m_signedDistance(closestIndex),
+													 m_currentState.m_signedDistance(std::min(gridSize, closestIndex + m_currentState.m_dims(Z) + 1)),
+													 m_currentState.m_signedDistance(std::max((size_t)0, closestIndex - (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1))),
+													 m_currentState.m_signedDistance(closestIndex),
+													 m_currentState.m_signedDistance(std::min(gridSize, closestIndex + (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1))),
+													 m_currentState.m_signedDistance(std::max((size_t)0, closestIndex - 1)));*/
+							spdlog::debug("Velocity at original 'closest cell' = {}, Velocity at 'closest cell' = {}", m_currentState.m_velocity.row(originalClosestIndex), m_currentState.m_velocity.row(closestIndex));
+						}
+						catch (const std::exception& e)
+						{
+							
+							spdlog::debug("Caught exception:\n{}", e.what());
+						}
+						
 						continue;
 					}
 
@@ -303,7 +348,7 @@ namespace FluidSimulation
 				bool within2BoundaryOutgoing = (it.row() + 2 * offset >= 0) && (it.row() + 2 * offset < m_currentState.getGridMatrixSize(true));*/
 
 				// If the cell is at an edge, keep velocity at zero per Neumann condition
-				if (withinBoundaryIncoming && (within2BoundaryOutgoing || it.col() == Z))
+				if (withinBoundaryIncoming && (withinBoundaryOutgoing || it.col() == Z))
 				{
 					spdlog::debug("Inserting Interpolation Value {} at ({}, {}) into dimension {}", 1 - std::abs(value), it.row(), it.row(), it.col());
 					triplets[it.col()].emplace_back(it.row(), it.row(), 1 - std::abs(value));
@@ -312,6 +357,10 @@ namespace FluidSimulation
 					{
 						spdlog::debug("Inserting Interpolation Value {} at ({}, {}) into dimension {}", std::abs(value), it.row(), it.row() + direction * offset, it.col());
 						triplets[it.col()].emplace_back(it.row(), it.row() + direction * offset, std::abs(value));
+					}
+					else
+					{
+						spdlog::debug("Skipping advection interpolation value at ({}, {})", it.row(), it.row() + direction * offset);
 					}
 				}
 			}
@@ -407,6 +456,7 @@ namespace FluidSimulation
 		m_currentState.m_signedDistance = (interpolateMatrix * m_currentState.m_signedDistance).eval();
 		spdlog::debug("Updated Signed Distance = \n{}", m_currentState.m_signedDistance);
 		m_currentState.m_dSignedDistance += h * oldVelocityMid;
+		m_currentState.m_dSignedDistance.rowwise().normalize();
 		//oldVelocityMid.cwiseQuotient(m_currentState.m_gridSizeHorizontal) * h;
 	}
 
@@ -515,6 +565,8 @@ namespace FluidSimulation
 		//spdlog::debug("Solving for pressure with the following inputs");
 		//spdlog::debug("velocity = \n{}", velocity);
 		spdlog::debug("d2p = \n{}", (Eigen::MatrixXd)d2p);
+		spdlog::debug("d2p (block) = \n{}", ((Eigen::MatrixXd)d2p).block(0 + 0 + (m_currentState.m_dims(X) / 2) * m_currentState.m_dims(Z) * m_currentState.m_dims(Y), 0, 
+																																		 4, m_currentState.getGridMatrixSize(false)));
 
 		/* SOLVE */
 		// Solve with modified Cholesky preconditioner
@@ -525,6 +577,22 @@ namespace FluidSimulation
 		
 		spdlog::debug("velocity = \n{}", (Eigen::MatrixXd)velocity);
 		m_currentState.getQuantityDivergence(dv, velocity);
+
+		for (int k = 0; k < dv.outerSize(); ++k)
+		{
+			for (Eigen::SparseMatrix<double>::InnerIterator it(dv, k); it; ++it)
+			{
+				int z = (it.row() % (m_currentState.m_dims(2)));
+				int y = ((it.row() / (m_currentState.m_dims(2))) % (m_currentState.m_dims(1)));
+				int x =	(it.row() / ((m_currentState.m_dims(2)) * (m_currentState.m_dims(1))));
+
+				if (m_currentState.m_signedDistance(z + y * (m_currentState.m_dims(2) + 1) + x * (m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)) > 0)
+				{
+					it.valueRef() = 0;
+				}
+			}
+		}
+
 		spdlog::debug("div v = \n{}", (Eigen::MatrixXd)dv);
 		//solver.compute(d2p);
 		pressure = solver.solve(-dv);
