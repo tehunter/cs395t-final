@@ -23,6 +23,11 @@ namespace FluidSimulation
 		void step(double h);
 		EulerState const* getState() { return &m_currentState; };
 		EulerState* updateState() { return &m_currentState; };
+
+		bool getGravityEnabled() { return m_enableGravity; };
+		bool getPressureEnabled() { return m_enablePressure; };
+		void toggleGravity() { m_enableGravity = !m_enableGravity; };
+		void togglePressure() { m_enablePressure = !m_enablePressure; };
 	private:
 		void getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField, Eigen::SparseMatrix<double, Eigen::ColMajor>& velocityMid);
 		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField);
