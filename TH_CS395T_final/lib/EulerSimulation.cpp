@@ -4,7 +4,7 @@
 #include <queue>
 #include <Eigen/Core>
 #include <Eigen/Sparse>
-//#include <Eigen/IterativeLinearSolvers>
+#include <Eigen/IterativeLinearSolvers>
 #include <Eigen/SparseCholesky>
 #include "EulerSimulation.h"
 #include "EulerState.h"
@@ -14,6 +14,10 @@
 
 namespace FluidSimulation
 {
+	void EulerSimulation::reset(EulerState state)
+	{
+		m_currentState = state;
+	}
 	void EulerSimulation::step(double h)
 	{
 		Eigen::SparseMatrix<double, Eigen::ColMajor> newVelocity, oldVelocityMid;
@@ -677,6 +681,9 @@ namespace FluidSimulation
 				{
 					int i = z + y * (m_currentState.m_dims(Z) + 1) + x * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
 
+					if (z == 0)
+						continue;
+
 					if (it && it.row() == i)
 					{
 						it.valueRef() += h * m_gravity;
@@ -716,7 +723,7 @@ namespace FluidSimulation
 
 					if (m_currentState.m_signedDistance(iElement) > 0)
 					{
-						d2p.coeffRef(i, i) = 1.0 / std::pow(m_currentState.m_gridSizeHorizontal(X), 2) + 
+						d2p.coeffRef(i, i) = 1.0 / std::pow(m_currentState.m_gridSizeHorizontal(X), 2) +
 							1.0 / std::pow(m_currentState.m_gridSizeHorizontal(Y), 2) +
 							1.0 / std::pow(m_currentState.m_gridSizeHorizontal(Z), 2);
 						// Make sure this air cell doesn't factor into any other cells
@@ -764,16 +771,9 @@ namespace FluidSimulation
 		//spdlog::debug("Solving for pressure with the following inputs");
 		//spdlog::debug("velocity = \n{}", velocity);
 		spdlog::debug("d2p = \n{}", (Eigen::MatrixXd)d2p);
-		spdlog::debug("d2p (block) = \n{}", ((Eigen::MatrixXd)d2p).block(0 + 0 + (m_currentState.m_dims(X) / 2) * m_currentState.m_dims(Z) * m_currentState.m_dims(Y), 0, 
+		spdlog::debug("d2p (block) = \n{}", ((Eigen::MatrixXd)d2p).block(0 + 0 + (m_currentState.m_dims(X) / 2) * m_currentState.m_dims(Z) * m_currentState.m_dims(Y), 0,
 																																		 4, m_currentState.getGridMatrixSize(false)));
 
-		/* SOLVE */
-		// Solve with modified Cholesky preconditioner
-		//Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower | Eigen::Upper> cgSolver;
-
-		//Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<double, Eigen::Lower | Eigen::Upper>> cgSolver;
-		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(d2p);
-		
 		spdlog::debug("velocity = \n{}", (Eigen::MatrixXd)velocity);
 		m_currentState.getQuantityDivergence(dv, velocity);
 
@@ -784,7 +784,7 @@ namespace FluidSimulation
 			{
 				int z = (it.row() % (m_currentState.m_dims(2)));
 				int y = ((it.row() / (m_currentState.m_dims(2))) % (m_currentState.m_dims(1)));
-				int x =	(it.row() / ((m_currentState.m_dims(2)) * (m_currentState.m_dims(1))));
+				int x = (it.row() / ((m_currentState.m_dims(2)) * (m_currentState.m_dims(1))));
 
 				if (m_currentState.m_signedDistance(z + y * (m_currentState.m_dims(2) + 1) + x * (m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)) > 0)
 				{
@@ -795,8 +795,32 @@ namespace FluidSimulation
 
 		spdlog::debug("div v = \n{}", (Eigen::MatrixXd)dv);
 
-		//solver.compute(d2p);
-		pressure = solver.solve(-dv);
+		/* SOLVE */
+		// Solve with modified Cholesky preconditioner
+		if (m_solver == CG)
+		{
+			Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower | Eigen::Upper> solver;
+
+			//Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<double, Eigen::Lower | Eigen::Upper>> cgSolver;		
+			solver.compute(d2p);
+			pressure = solver.solve(-dv);
+			spdlog::debug("Solver info: {} in {} iterations", solver.info() == Eigen::Success ? "Successfully converged" : "Did not successfully converge", solver.iterations());
+
+		}
+		else if (m_solver == Simplicial)
+		{
+			Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(d2p);
+			pressure = solver.solve(-dv);
+			spdlog::debug("Solver info: {}", solver.info() == Eigen::Success ? "Successfully converged" : "Did not successfully converge");
+
+		}
+		else if (m_solver == CholMod)
+		{
+			//Eigen::CholmodSupernodalLLT<Eigen::SparseMatrix<double>> solver(d2p);
+			//pressure = solver.solve(-dv);
+			//spdlog::debug("Solver info: {}", solver.info() == Eigen::Success ? "Successfully converged" : "Did not successfully converge");
+
+		}
 		//pressure = p.sparseView();
 		m_currentState.m_pressure = pressure;
 		spdlog::debug("pressure = \n{}", (Eigen::MatrixXd)pressure);
@@ -804,15 +828,14 @@ namespace FluidSimulation
 		m_currentState.getPressureGradient(dp);
 
 		spdlog::debug("dp = \n{}", (Eigen::MatrixXd)dp);
-		spdlog::debug("change in velocity = \n{}", h / m_density * m_currentState.m_midToElement.transpose() * dp);
+		spdlog::debug("change in velocity = \n{}", h / m_density * dp);
 		// Note: The way I have defined velocity, 
-		velocity -= h / m_density * m_currentState.m_midToElement.transpose() * dp;
+		velocity -= h / m_density * dp;
 		//p = cgSolver.solveWithGuess(-(Eigen::VectorXd)dv, p);
 
-		spdlog::debug("Solver info: {} in {} iterations", solver.info() == Eigen::Success ? "Successfully converged" : "Did not successfully converge", "n/a");
 		//spdlog::info("Solver error: {}", solver)
 
-		spdlog::debug("Results");
+		spdlog::debug("Pressure Done");
 		//spdlog::info("p = \n{}", pressure);
 
 

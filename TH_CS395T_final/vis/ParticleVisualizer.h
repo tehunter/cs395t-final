@@ -48,6 +48,8 @@ namespace FluidVisualizer
 		Eigen::MatrixXd pointColors;
 		Eigen::MatrixXd renderP;
 
+		int m_size[3];
+
 		void runSimThread();
 		void killSimThread();
 

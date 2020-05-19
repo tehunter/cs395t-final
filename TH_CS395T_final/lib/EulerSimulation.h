@@ -11,18 +11,23 @@ namespace FluidSimulation
 	static Eigen::IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
 	static Eigen::IOFormat LongFmt(3, 0, ", ", "; ", "[", "]");
 
+	enum Solver { CG, Simplicial, CholMod };
+
 	class EulerSimulation
 	{
 	public:
-		EulerSimulation(Eigen::Vector3i dimSize, Eigen::Vector3d gridWidth) : 
-			m_density(1.0), m_gravity(-9.8), m_currentState(dimSize, gridWidth) 
+		EulerSimulation(Eigen::Vector3i dimSize, Eigen::Vector3d gridWidth) :
+			m_density(1.0), m_gravity(-9.8), m_currentState(dimSize, gridWidth),
+			m_position(0, 0, 0), m_theta(0, 0, 0)
 		{
 			m_enableGravity = true;
 			m_enablePressure = true;
 			m_recalculateLevelSet = false;
 			m_cutoffDistance = 4.0;
+			m_solver == Simplicial;
 		};
 		void step(double h);
+		void reset(EulerState state);
 		EulerState const* getState() { return &m_currentState; };
 		EulerState* updateState() { return &m_currentState; };
 
@@ -34,6 +39,7 @@ namespace FluidSimulation
 		void toggleRecalculateLevelSet() { m_recalculateLevelSet = !m_recalculateLevelSet; };
 
 		double m_cutoffDistance;
+		Solver m_solver;
 	private:
 		void getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField, Eigen::SparseMatrix<double, Eigen::ColMajor>& velocityMid);
 		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField);

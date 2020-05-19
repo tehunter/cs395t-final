@@ -26,7 +26,7 @@ endif()
 if (PACKAGE_VISUALIZER)
     find_package(LIBIGL REQUIRED)
 
-    add_library (FluidVisualizer STATIC "vis/ParticleVisualizer.h" "vis/ParticleVisualizer.cpp")
+    add_library (FluidVisualizer STATIC "vis/ParticleVisualizer.h" "vis/ParticleVisualizer.cpp" "vis/FluidScenarios.h" "vis/FluidScenarios.cpp")
     if (MSVC)
         set_property(TARGET FluidVisualizer PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

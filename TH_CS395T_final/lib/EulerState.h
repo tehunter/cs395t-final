@@ -12,6 +12,9 @@ namespace FluidSimulation
 	public:
 		EulerState(Eigen::Vector3i dims, Eigen::Vector3d gridSize);
 
+		EulerState(const EulerState& other);
+		EulerState& EulerState::operator=(const EulerState& other);
+
 		/* DATA MEMBERS */
 		Eigen::VectorXd m_signedDistance;
 		Eigen::MatrixX3d m_dSignedDistance;
@@ -19,8 +22,8 @@ namespace FluidSimulation
 		Eigen::SparseMatrix<double> m_velocity;
 		Eigen::SparseVector<double> m_pressure;
 
-		const Eigen::Vector3i m_dims;
-		const Eigen::Vector3d m_gridSizeHorizontal;
+		Eigen::Vector3i m_dims;
+		Eigen::Vector3d m_gridSizeHorizontal;
 
 		/* HELPER STRUCTURES */
 		Eigen::MatrixX3d m_positionsMid;
@@ -55,6 +58,8 @@ namespace FluidSimulation
 		
 		//Eigen::SparseMatrix<double> m_velocity;
 		Eigen::SparseMatrix<double> m_forces;
+
+	protected:
 		Eigen::SparseMatrix<double> m_laplacian;
 
 		/* HELPER STRUCTURES */

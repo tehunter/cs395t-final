@@ -35,6 +35,10 @@ namespace FluidVisualizer
 			renderF.row(2) << 0, 4, 3;
 			renderF.row(3) << 0, 1, 4;
 		}
+
+		m_size[0] = m_simulation->getState()->m_dims(0);
+		m_size[1] = m_simulation->getState()->m_dims(1);
+		m_size[2] = m_simulation->getState()->m_dims(2);
 	}
 	void ParticleVisualizer::toggleSimulation()
 	{
@@ -129,6 +133,13 @@ namespace FluidVisualizer
 		killSimThread();
 		please_die = running = false;
 		please_pause = true;
+
+		if (!m_simulation->getState()->m_dims.isApprox(Eigen::Vector3i(m_size[0], m_size[1], m_size[2])))
+		{
+			FluidSimulation::EulerState state(Eigen::Vector3i(m_size[0], m_size[1], m_size[2]), m_simulation->getState()->m_gridSizeHorizontal);
+			m_simulation->reset(state);
+		}
+
 		initSimulation();
 		updateRenderGeometry();
 		sim_thread = new std::thread(&ParticleVisualizer::runSimThread, this);
@@ -374,15 +385,30 @@ namespace FluidVisualizer
 			{
 				resetSimulation();
 			}
+			if (ImGui::InputInt3("Grid Size", m_size))
+			{
+
+			}
 		}
 		if (ImGui::CollapsingHeader("Simulation Scenario", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			std::string strings[4] = { "Hydrostatic Volume", "Falling Sphere", "Suspended Column", "Dam Break"};
+			std::string strings[4] = { "Hydrostatic Volume", "Falling Sphere", "Suspended Column", "Dam Break" };
 			for (int i = 0; i < 4; i++)
 			{
 				if (ImGui::RadioButton(strings[i].c_str(), m_scenario == i))
 				{
 					m_scenario = (Scenario)i;
+				}
+			}
+		}
+		if (ImGui::CollapsingHeader("Solver", ImGuiTreeNodeFlags_::ImGuiTreeNodeFlags_None))
+		{
+			std::string solverStrings[2] = { "Conjugate Gradient", "Simplicial LDLT" };
+			for (int i = 0; i < 2; i++)
+			{
+				if (ImGui::RadioButton(solverStrings[i].c_str(), m_simulation->m_solver == i))
+				{
+					m_simulation->m_solver = (FluidSimulation::Solver)i;
 				}
 			}
 		}

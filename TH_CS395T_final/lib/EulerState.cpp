@@ -17,6 +17,10 @@ namespace FluidSimulation
 		calculateCentralDifferenceStencil(Y, false, m_stencilY);
 		calculateCentralDifferenceStencil(Z, false, m_stencilZ);
 
+		spdlog::debug("Stencil X = \n{}", m_stencilX);
+		spdlog::debug("Stencil Y = \n{}", m_stencilY);
+		spdlog::debug("Stencil Z = \n{}", m_stencilZ);
+
 		calculateCentralDifferenceStencil(X, true, m_stencilXMid);
 		calculateCentralDifferenceStencil(Y, true, m_stencilYMid);
 		calculateCentralDifferenceStencil(Z, true, m_stencilZMid);
@@ -71,6 +75,55 @@ namespace FluidSimulation
 		spdlog::info("Finished Constructing EulerState");
 	};
 
+	EulerState::EulerState(const EulerState& other) :
+		m_dims(other.m_dims), m_gridSizeHorizontal(other.m_gridSizeHorizontal)
+	{
+		this->m_signedDistance = other.m_signedDistance;
+		this->m_dSignedDistance = other.m_dSignedDistance;
+		this->m_laplacian = other.m_laplacian;
+		this->m_pressure = other.m_pressure;
+		this->m_velocity = other.m_velocity;
+
+		this->m_midToElement = other.m_midToElement;
+		this->m_positionsMid = other.m_positionsMid;
+
+		this->m_stencilX = other.m_stencilX;
+		this->m_stencilY = other.m_stencilY;
+		this->m_stencilZ = other.m_stencilZ;
+
+		this->m_stencilXMid = other.m_stencilXMid;
+		this->m_stencilYMid = other.m_stencilYMid;
+		this->m_stencilZMid = other.m_stencilZMid;
+
+		this->m_forces = other.m_forces;
+	}
+	EulerState& EulerState::operator=(const EulerState& other)
+	{
+		this->m_dims = other.m_dims;
+		this->m_gridSizeHorizontal = other.m_gridSizeHorizontal;
+
+		this->m_signedDistance = other.m_signedDistance;
+		this->m_dSignedDistance = other.m_dSignedDistance;
+		this->m_laplacian = other.m_laplacian;
+		this->m_pressure = other.m_pressure;
+		this->m_velocity = other.m_velocity;
+
+		this->m_midToElement = other.m_midToElement;
+		this->m_positionsMid = other.m_positionsMid;
+
+		this->m_stencilX = other.m_stencilX;
+		this->m_stencilY = other.m_stencilY;
+		this->m_stencilZ = other.m_stencilZ;
+
+		this->m_stencilXMid = other.m_stencilXMid;
+		this->m_stencilYMid = other.m_stencilYMid;
+		this->m_stencilZMid = other.m_stencilZMid;
+
+		this->m_forces = other.m_forces;
+
+		return *this;
+	}
+
 	const size_t EulerState::getGridMatrixSize(bool midGrid) const
 	{ 
 		int size = 0;
@@ -96,7 +149,7 @@ namespace FluidSimulation
 		}
 		else
 		{
-			stencil.resize(getGridMatrixSize(false), getGridMatrixSize(false));
+			stencil.resize(getGridMatrixSize(true), getGridMatrixSize(false));
 		}
 
 		int spacing = 1;
@@ -123,6 +176,8 @@ namespace FluidSimulation
 					int iMid = z + y * (m_dims(Z) + 1) + x * (m_dims(Z) + 1) * (m_dims(Y) + 1);
 					int dir = -1;
 					bool withinBounds = (dim == X && ((x + dir) >= 0 && (x + dir < m_dims(X)))) || (dim == Y && ((y + dir) >= 0 && (y + dir < m_dims(Y)))) || (dim == Z && ((z + dir) >= 0 && (z + dir < m_dims(Z))));
+					int midSpacing = (dim == 2) * 1 + (dim == 1) * (m_dims(Z) + 1) + (dim == 0) * (m_dims(Z) + 1) * (m_dims(Y) + 1);
+
 
 					// If it's a mid-point grid location, the value on both sides are known
 					if (midGrid)
@@ -134,8 +189,8 @@ namespace FluidSimulation
 					else if (withinBounds && i - spacing >= 0 && i < getGridMatrixSize(false))
 					{
 
-						triplets.emplace_back(i, i - spacing, -1.0); // 1
-						triplets.emplace_back(i, i, 1.0); // 2  /////-2
+						triplets.emplace_back(iMid, i - spacing, -1.0); // 1
+						triplets.emplace_back(iMid, i, 1.0); // 2  /////-2
 					}
 					// Along an edge - no gradient (e.g. assume pressure is equalized on both sides of the grid cell)
 					else if (i - spacing < 0)
@@ -144,7 +199,14 @@ namespace FluidSimulation
 					} 
 					else if (i + spacing >= getGridMatrixSize(false))
 					{
-						//triplets.emplace_back(i, i - spacing, -2.0);
+						if (dim == Z)
+							triplets.emplace_back(i, i - spacing, -1.0);
+					}
+
+					// Unless it's a top edge (TODO: Maybe remove this), which is open
+					if (!midGrid && dim == Z && z == m_dims(Z) - 1 && iMid + midSpacing < getGridMatrixSize(true))
+					{
+						triplets.emplace_back(iMid + midSpacing, i, -1.0); // 2  /////-2
 					}
 				}
 			}
@@ -237,7 +299,7 @@ namespace FluidSimulation
 		//Eigen::SparseMatrix<double, Eigen::ColMajor> xStencil, yStencil, zStencil;
 		//Eigen::SparseMatrix<double, Eigen::ColMajor> dv(3, getGridMatrixSize());
 
-		dv.resize(getGridMatrixSize(false), 3);
+		dv.resize(getGridMatrixSize(!midGrid), 3);
 
 		/*getCentralDifferenceStencil(X, midGrid, xStencil);
 		getCentralDifferenceStencil(Y, midGrid, yStencil);
@@ -275,9 +337,9 @@ namespace FluidSimulation
 		dv.resize(getGridMatrixSize(false), getGridMatrixSize(false));
 		Eigen::IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
 
-		//spdlog::info("X Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilXMid).format(CleanFmt));
-		//spdlog::info("Y Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilYMid).format(CleanFmt));
-		//spdlog::info("Z Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilZMid).format(CleanFmt));
+		spdlog::debug("X Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilXMid).format(CleanFmt));
+		spdlog::debug("Y Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilYMid).format(CleanFmt));
+		spdlog::debug("Z Mid Stencil = \n{}", Eigen::MatrixXd(m_stencilZMid).format(CleanFmt));
 		getQuantityGradient(dvDir, true, quantity);
 
 		Eigen::SparseVector<double, Eigen::ColMajor> ones(3, 1);

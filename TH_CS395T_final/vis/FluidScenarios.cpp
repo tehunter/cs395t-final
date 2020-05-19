@@ -1,9 +1,11 @@
 #include "FluidScenarios.h"
 #include "../lib/EulerSimulation.h"
+#include "../lib/EulerState.h"
 #include <Eigen/Core>
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/basic_file_sink.h"
 
+using namespace FluidSimulation;
 
 namespace FluidVisualizer
 {
