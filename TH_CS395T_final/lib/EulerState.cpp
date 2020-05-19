@@ -206,7 +206,7 @@ namespace FluidSimulation
 					// Unless it's a top edge (TODO: Maybe remove this), which is open
 					if (!midGrid && dim == Z && z == m_dims(Z) - 1 && iMid + midSpacing < getGridMatrixSize(true))
 					{
-						triplets.emplace_back(iMid + midSpacing, i, -1.0); // 2  /////-2
+						//triplets.emplace_back(iMid + midSpacing, i, -1.0); // 2  /////-2
 					}
 				}
 			}
@@ -250,7 +250,7 @@ namespace FluidSimulation
 							{
 								// Treat the top boundary as air
 								// TODO: Is this okay?
-								triplets.emplace_back(i, i, 1 / (m_gridSizeHorizontal(dim) * m_gridSizeHorizontal(dim)));
+								//triplets.emplace_back(i, i, 1 / (m_gridSizeHorizontal(dim) * m_gridSizeHorizontal(dim)));
 							}
 						}
 					}

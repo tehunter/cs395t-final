@@ -23,11 +23,14 @@ namespace FluidSimulation
 			m_enableGravity = true;
 			m_enablePressure = true;
 			m_recalculateLevelSet = false;
+			m_hasTrackerParticles = false;
 			m_cutoffDistance = 4.0;
-			m_solver == Simplicial;
+			m_solver = Simplicial;
 		};
-		void step(double h);
+		double step(double h);
+		void reset();
 		void reset(EulerState state);
+		void addTrackerParticles();
 		EulerState const* getState() { return &m_currentState; };
 		EulerState* updateState() { return &m_currentState; };
 
@@ -40,10 +43,15 @@ namespace FluidSimulation
 
 		double m_cutoffDistance;
 		Solver m_solver;
+
+		Eigen::MatrixX3d m_previousVelocities;
+		Eigen::MatrixX3d m_trackerParticles;
+		bool m_hasTrackerParticles;
 	private:
 		void getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField, Eigen::SparseMatrix<double, Eigen::ColMajor>& velocityMid);
 		void getAdvectedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField);
 		void advectSignedDistance(double h, const Eigen::SparseMatrix<double, Eigen::ColMajor> oldVelocityMid);
+		void advectTrackerParticles(double h, const Eigen::SparseMatrix<double>& velocityField);
 		void updateGravity(double h, Eigen::SparseMatrix<double>& velocity, const Eigen::VectorXd& signedDistance);
 
 		void updatePressure(double h, Eigen::SparseMatrix<double>& velocity, Eigen::SparseVector<double>& pressure);

@@ -26,18 +26,34 @@ namespace FluidVisualizer
 					Eigen::Vector3d direction;
 					double distance = 999;
 
+
 					switch (m_scenario)
 					{
-					case Hydrostatic:
-						direction = Eigen::Vector3d(0, 0, 1.0);
-						distance = position(2) - sphereCenter(2);
-						break;
 					case Sphere:
+
 						direction = (position - sphereCenter);
+						direction(2) -= 2.0 * m_simulation->getState()->m_gridSizeHorizontal(2);
 						if (direction.norm() > 0)
 							distance = (direction).norm() - radius;
 						else
 							distance = -radius;
+
+					case Hydrostatic:
+
+						if (m_scenario == Sphere)
+						{
+							if (position(2) - sphereCenter(2) < distance)
+							{
+								distance = position(2) - sphereCenter(2);
+								direction = Eigen::Vector3d(0, 0, 1.0);
+							}
+						}
+						else
+						{
+							distance = position(2) - sphereCenter(2);
+							direction = Eigen::Vector3d(0, 0, 1.0);
+						}
+
 						break;
 					case SuspendedColumn:
 						/*if (x == m_simulation->getState()->m_dims(X))

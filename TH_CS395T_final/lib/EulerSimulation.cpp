@@ -14,12 +14,20 @@
 
 namespace FluidSimulation
 {
+	void EulerSimulation::reset()
+	{
+		m_hasTrackerParticles = false;
+		m_trackerParticles.setZero();
+	}
 	void EulerSimulation::reset(EulerState state)
 	{
 		m_currentState = state;
+		m_hasTrackerParticles = false;
+		m_trackerParticles.setZero();
 	}
-	void EulerSimulation::step(double h)
+	double EulerSimulation::step(double h)
 	{
+		spdlog::debug("Step");
 		Eigen::SparseMatrix<double, Eigen::ColMajor> newVelocity, oldVelocityMid;
 		Eigen::SparseMatrix<double, Eigen::ColMajor> pressure;
 		std::vector<Eigen::Triplet<double>> triplets[3];
@@ -29,6 +37,11 @@ namespace FluidSimulation
 		if (m_recalculateLevelSet)
 		{
 			recalculateLevelSet();
+		}
+
+		if (m_hasTrackerParticles)
+		{
+			advectTrackerParticles(h, newVelocity);
 		}
 
 		if (m_enableGravity)
@@ -48,7 +61,52 @@ namespace FluidSimulation
 
 		//spdlog::info("Setting m_currentState.m_velocity = \n{}", newVelocity);
 		m_currentState.m_velocity = newVelocity;
+
+		double maxvel = 1;
+		for (int k = 0; k < newVelocity.outerSize(); ++k)
+			for (Eigen::SparseMatrix<double>::InnerIterator it(newVelocity, k); it; ++it)
+				maxvel = std::max(maxvel, std::abs(it.value()));
 		
+		h = 5.0 * m_currentState.m_gridSizeHorizontal.minCoeff() / maxvel;
+		spdlog::debug("Recommended Time Step = {}", h);
+
+		return h;
+	}
+
+	void EulerSimulation::addTrackerParticles()
+	{
+		m_hasTrackerParticles = true;
+
+		const int NUM_PER_CELL = 8;
+		m_trackerParticles.resize(m_currentState.getGridMatrixSize(false) * NUM_PER_CELL, 3);
+		int nparticle = 0;
+		for (int i = 0; i < m_currentState.getGridMatrixSize(true); i++)
+		{
+			int z = (i % (m_currentState.m_dims(2) + 1));
+			int y = ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1));
+			int x = (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
+
+			if (x >= m_currentState.m_dims(X) || y >= m_currentState.m_dims(Y) || z >= m_currentState.m_dims(Z))
+				continue;
+
+			if (m_currentState.m_signedDistance(i) >= 0)
+				continue;
+
+			Eigen::Vector3d pos = m_currentState.getLocalCoordinatesOfElement(i, true);
+
+			for (int j = 0; j < NUM_PER_CELL; j++)
+			{
+				// Add randomly within the cell
+				Eigen::Vector3d trackerPos = Eigen::Vector3d::Random().cwiseProduct(m_currentState.m_gridSizeHorizontal) / 2.0;
+				trackerPos += pos;
+
+				m_trackerParticles.row(nparticle) = trackerPos;
+				nparticle++;
+			}
+		}
+		m_trackerParticles.conservativeResize(nparticle, 3);
+		m_previousVelocities.setZero(m_currentState.getGridMatrixSize(true), 3);
+		//m_previousTrackerParticles = m_trackerParticles;
 	}
 
 	void EulerSimulation::getExtrapolatedVelocityField(double h, Eigen::SparseMatrix<double>& velocityField,
@@ -81,9 +139,10 @@ namespace FluidSimulation
 				//Eigen::Vector3d closestPosition = closestPoint;
 				double closestIndexX, closestIndexY, closestIndexZ;
 				double weights[3];
-				weights[0] = std::modf(closestPosition(0) / m_currentState.m_gridSizeHorizontal(0) - 0.5, &closestIndexX);
-				weights[1] = std::modf(closestPosition(1) / m_currentState.m_gridSizeHorizontal(1) - 0.5, &closestIndexY);
-				weights[2] = std::modf(closestPosition(2) / m_currentState.m_gridSizeHorizontal(2) - 0.5, &closestIndexZ);
+				// TODO: Subtract 0.5?
+				weights[0] = std::modf(closestPosition(0) / m_currentState.m_gridSizeHorizontal(0), &closestIndexX);
+				weights[1] = std::modf(closestPosition(1) / m_currentState.m_gridSizeHorizontal(1), &closestIndexY);
+				weights[2] = std::modf(closestPosition(2) / m_currentState.m_gridSizeHorizontal(2), &closestIndexZ);
 				size_t closestIndex = (size_t)closestIndexZ + (size_t)closestIndexY * (m_currentState.m_dims(Z) + 1) + (size_t)closestIndexX * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
 
 				size_t originalClosestIndex = closestIndex;
@@ -124,7 +183,6 @@ namespace FluidSimulation
 					double weight = weights[dim];
 					int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
 					
-					// TODO: Update this. I'm not properly checking if we're within bounds
 					int dimIndex = (dim == 2) * (i % (m_currentState.m_dims(2) + 1)) +
 						(dim == 1) * ((i / (m_currentState.m_dims(2) + 1)) % (m_currentState.m_dims(1) + 1)) +
 						(dim == 0) * (i / ((m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1)));
@@ -197,30 +255,6 @@ namespace FluidSimulation
 					if (m_currentState.m_signedDistance(closestIndex) > 0 && closestIndex + offset < m_currentState.getGridMatrixSize(true) && m_currentState.m_signedDistance(closestIndex + offset) > 0)
 					{
 						triplets[dim].emplace_back(i, closestIndex, 1);
-
-						/*spdlog::warn("Want to extrapolate the velocity field but both points are outside of the water volume");
-						spdlog::info("Index of unknown cell = {}; Index of original 'closest' cell = {}; Index of 'closest' cell = {}", i, originalClosestIndex, closestIndex);
-						spdlog::info("Distance of unknown cell from surface = {}; distance of original 'closest' cell to surface = {}; distance of 'closest' cell to surface = {}", m_currentState.m_signedDistance(i), m_currentState.m_signedDistance(originalClosestIndex), m_currentState.m_signedDistance(closestIndex));
-						spdlog::info("Gradient of signed distance = {}", m_currentState.m_dSignedDistance.row(i).format(LongFmt));
-						spdlog::info("Signed distance near original 'closest cell' = \n \t\t\t {} \n {} \t {} \t {} \t | X = \t {} \t {} \t {} \n \t\t\t {}",
-												 m_currentState.m_signedDistance(originalClosestIndex + 1),
-												 m_currentState.m_signedDistance(originalClosestIndex - m_currentState.m_dims(Z) - 1),
-												 m_currentState.m_signedDistance(originalClosestIndex),
-												 m_currentState.m_signedDistance(originalClosestIndex + m_currentState.m_dims(Z) + 1),
-												 m_currentState.m_signedDistance(originalClosestIndex - (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
-												 m_currentState.m_signedDistance(originalClosestIndex),
-												 m_currentState.m_signedDistance(originalClosestIndex + (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
-												 m_currentState.m_signedDistance(originalClosestIndex - 1));
-						spdlog::info("Signed distance near 'closest cell' = \n \t\t\t {} \n {} \t {} \t {} \t | X = \t {} \t {} \t {} \n \t\t\t {}",
-												 m_currentState.m_signedDistance(closestIndex + 1),
-												 m_currentState.m_signedDistance(closestIndex - m_currentState.m_dims(Z) - 1),
-												 m_currentState.m_signedDistance(closestIndex),
-												 m_currentState.m_signedDistance(closestIndex + m_currentState.m_dims(Z) + 1),
-												 m_currentState.m_signedDistance(closestIndex - (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
-												 m_currentState.m_signedDistance(closestIndex),
-												 m_currentState.m_signedDistance(closestIndex + (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1)),
-												 m_currentState.m_signedDistance(closestIndex - 1));
-						spdlog::info("Velocity at original 'closest cell' = {}, Velocity at 'closest cell' = {}", m_currentState.m_velocity.row(originalClosestIndex), m_currentState.m_velocity.row(closestIndex));*/
 					}
 					// If just one point is outside water volume, take the value of the point that is inside
 					if (closestIndex + offset < m_currentState.getGridMatrixSize(true) && m_currentState.m_signedDistance(closestIndex) > 0)
@@ -491,6 +525,129 @@ namespace FluidSimulation
 		//oldVelocityMid.cwiseQuotient(m_currentState.m_gridSizeHorizontal) * h;
 	}
 
+	void EulerSimulation::advectTrackerParticles(double h, const Eigen::SparseMatrix<double>& velocityField)
+	{
+		Eigen::MatrixXd temp;
+
+		//Eigen::SparseMatrix<double, Eigen::ColMajor> interpolateX, interpolateY, interpolateZ;
+		std::vector<Eigen::Triplet<double>> triplets[3], tripletsMid[3];
+		Eigen::SparseMatrix<double> interpolateX, interpolateY, interpolateZ;
+
+		interpolateX.resize(m_trackerParticles.rows(), m_currentState.getGridMatrixSize(true));
+		interpolateY.resize(m_trackerParticles.rows(), m_currentState.getGridMatrixSize(true));
+		interpolateZ.resize(m_trackerParticles.rows(), m_currentState.getGridMatrixSize(true));
+
+		//interpolateX.setIdentity(); interpolateY.setIdentity(); interpolateZ.setIdentity();
+
+		// First Pass: Get the velocity of the particle from interpolation
+		for (int i = 0; i < m_trackerParticles.rows(); i++)
+		{
+			Eigen::Vector3d pos = m_trackerParticles.row(i);
+			double closestIndices[3];
+			double weights[3];
+			weights[0] = std::modf(pos(0) / m_currentState.m_gridSizeHorizontal(0), closestIndices);
+			weights[1] = std::modf(pos(1) / m_currentState.m_gridSizeHorizontal(1), (closestIndices + 1));
+			weights[2] = std::modf(pos(2) / m_currentState.m_gridSizeHorizontal(2), (closestIndices + 2));
+
+			for (int dim = 0; dim < 3; dim++)
+			{
+				double weight = weights[dim];
+				int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
+
+				int closestIndex = closestIndices[2] + closestIndices[1] * (m_currentState.m_dims(2) + 1) + closestIndices[0] * (m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1);
+
+				if (closestIndex >= m_currentState.getGridMatrixSize(true))
+				{
+					spdlog::warn("Tracked Particle {} appears to be outside the grid", i);
+					continue;
+				}
+
+				//spdlog::debug("Inserting (air) Interpolation Value {} at ({}, {}) into dimension {}", 1 - weight, i, closestIndex, dim);
+				triplets[dim].emplace_back(i, closestIndex, 1 - weight);
+				if (weight > 0)
+				{
+					if (closestIndex + offset < 0 || closestIndex + offset >= m_currentState.getGridMatrixSize(true) ||
+							closestIndices[dim] >= m_currentState.m_dims(dim))
+					{
+						spdlog::warn("Tracked Particle {} appears to be outside the grid", i);
+						continue;
+					}
+					//spdlog::debug("Inserting (air) Interpolation Value {} at ({}, {}) into dimension {}", weight, i, closestIndex + offset, dim);
+					triplets[dim].emplace_back(i, closestIndex + offset, weight);
+				}
+			}
+		}
+		interpolateX.setZero(); interpolateY.setZero(); interpolateZ.setZero();
+		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
+		interpolateY.setFromTriplets(triplets[1].begin(), triplets[1].end());
+		interpolateZ.setFromTriplets(triplets[2].begin(), triplets[2].end());
+
+		Eigen::MatrixXd particleVelocities(m_trackerParticles.rows(), 3);
+
+		m_trackerParticles.col(0) += 1 / 1.0 * h * interpolateX * m_previousVelocities.col(0);
+		m_trackerParticles.col(1) += 1 / 1.0 * h * interpolateY * m_previousVelocities.col(1);
+		m_trackerParticles.col(2) += 1 / 1.0 * h * interpolateZ * m_previousVelocities.col(2);
+
+		/*particleVelocities.col(0) = interpolateX * velocityField.col(0);
+		particleVelocities.col(1) = interpolateY * velocityField.col(1);
+		particleVelocities.col(2) = interpolateZ * velocityField.col(2);
+
+		// Second Pass: Get the velocity at the particle's previous position
+		for (int i = 0; i < m_trackerParticles.rows(); i++)
+		{
+			Eigen::Vector3d pos = m_trackerParticles.row(i) - h * particleVelocities.row(i);
+			//Eigen::Vector3d pos = m_previousTrackerParticles.row(i);
+			double closestIndices[3];
+			double weights[3];
+			weights[0] = std::modf(pos(0) / m_currentState.m_gridSizeHorizontal(0), closestIndices);
+			weights[1] = std::modf(pos(1) / m_currentState.m_gridSizeHorizontal(1), (closestIndices + 1));
+			weights[2] = std::modf(pos(2) / m_currentState.m_gridSizeHorizontal(2), (closestIndices + 2));
+
+			for (int dim = 0; dim < 3; dim++)
+			{
+				double weight = weights[dim];
+				int offset = (dim == Z) * 1 + (dim == Y) * (m_currentState.m_dims(Z) + 1) + (dim == X) * (m_currentState.m_dims(Z) + 1) * (m_currentState.m_dims(Y) + 1);
+
+				int closestIndex = closestIndices[2] + closestIndices[1] * (m_currentState.m_dims(2) + 1) + closestIndices[0] * (m_currentState.m_dims(2) + 1) * (m_currentState.m_dims(1) + 1);
+
+				if (closestIndex >= m_currentState.getGridMatrixSize(true))
+				{
+					spdlog::warn("Tracked Particle {} appears to be outside the grid", i);
+					continue;
+				}
+
+				//spdlog::debug("Inserting (air) Interpolation Value {} at ({}, {}) into dimension {}", 1 - weight, i, closestIndex, dim);
+				triplets[dim].emplace_back(i, closestIndex, 1 - weight);
+				if (weight > 0)
+				{
+					if (closestIndex + offset < 0 || closestIndex + offset >= m_currentState.getGridMatrixSize(true) ||
+							closestIndices[dim] >= m_currentState.m_dims(dim))
+					{
+						spdlog::warn("Tracked Particle {} appears to be outside the grid", i);
+						continue;
+					}
+					//spdlog::debug("Inserting (air) Interpolation Value {} at ({}, {}) into dimension {}", weight, i, closestIndex + offset, dim);
+					triplets[dim].emplace_back(i, closestIndex + offset, weight);
+				}
+			}
+		}
+		interpolateX.setZero(); interpolateY.setZero(); interpolateZ.setZero();
+		interpolateX.setFromTriplets(triplets[0].begin(), triplets[0].end());
+		interpolateY.setFromTriplets(triplets[1].begin(), triplets[1].end());
+		interpolateZ.setFromTriplets(triplets[2].begin(), triplets[2].end());
+
+		//temp = m_previousTrackerParticles;
+		//m_previousTrackerParticles = m_trackerParticles;
+
+		//m_trackerParticles += 1 / 2.0 * h * particleVelocities;
+		m_trackerParticles.col(0) += 1 / 1.0 * h * interpolateX * m_previousVelocities.col(0);
+		m_trackerParticles.col(1) += 1 / 1.0 * h * interpolateY * m_previousVelocities.col(1);
+		m_trackerParticles.col(2) += 1 / 1.0 * h * interpolateZ * m_previousVelocities.col(2);*/
+
+		m_previousVelocities = velocityField;
+	}
+	
+
 	void EulerSimulation::recalculateLevelSet()
 	{
 		// Find the the surface cells
@@ -690,7 +847,7 @@ namespace FluidSimulation
 						++it;
 					} 
 					// TODO: OVERRIDE AND WRITE THE VELOCITY EVERYWHERE
-					else if (true || signedDistance(i) <= 3 * m_currentState.m_gridSizeHorizontal.maxCoeff())
+					else if (signedDistance(i) <= m_cutoffDistance * m_currentState.m_gridSizeHorizontal.maxCoeff())
 					{
 							valuesToInsert.push_back(i);
 					}

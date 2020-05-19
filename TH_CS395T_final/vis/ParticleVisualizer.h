@@ -40,6 +40,8 @@ namespace FluidVisualizer
 		void run();
 		void stepOnce();
 
+		void addTrackerParticles();
+
 
 	protected:
 		Eigen::MatrixXd renderQ;
@@ -63,6 +65,9 @@ namespace FluidVisualizer
 		std::mutex message_mutex;
 
 		Scenario m_scenario;
+		bool m_showLevelSet;
+
+		double m_timeStep;
 
 	private:
 		FluidSimulation::EulerSimulation* m_simulation;
